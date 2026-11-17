@@ -1,9 +1,9 @@
 import * as T from 'three';
 import { blob, ground, group, matte, mesh, TAU, tube } from './model';
 
-const coat=matte('#23222b'), ridge=matte('#34313b'), inner=matte('#15141d');
-const cream=matte('#f1dcb2'), light=matte('#fff0d1'), tan=matte('#d59c5e'), shadowCream=matte('#ceb78e');
-const nose=matte('#161521',.30), iris=matte('#533826',.33), glint=new T.MeshBasicMaterial({color:'#fff0d2'});
+const coat=matte('#222127'), ridge=matte('#302e35'), inner=matte('#15141a');
+const cream=matte('#dbc59d'), light=matte('#f4e4c4'), tan=matte('#bf8d55'), shadowCream=matte('#b3a080');
+const nose=matte('#16151a',.44), iris=matte('#4c3222',.38), glint=new T.MeshBasicMaterial({color:'#fff0d2'});
 const tooth=matte('#ffebcc'), tongue=matte('#ca727b',.6);
 
 function lock(parent:T.Object3D, mat:T.Material, points:number[][], size:number, flatten=1) {
@@ -26,6 +26,77 @@ function lock(parent:T.Object3D, mat:T.Material, points:number[][], size:number,
   shape.setIndex(indices);
   shape.computeVertexNormals();
   return mesh(parent,shape,mat);
+}
+
+const skull = { y: .04, z: -.012, width: .424, height: .355, depth: .361 };
+
+function foreheadAt(x: number, y: number) {
+  const radius = (x / skull.width) ** 2 + ((y - skull.y) / skull.height) ** 2;
+  return skull.z + skull.depth * Math.sqrt(Math.max(.045, 1 - radius));
+}
+
+// Project the sheet's irregular color markings onto the sculpted forehead.
+function marking(parent: T.Object3D, material: T.Material, outline: [number, number][]) {
+  const middle = outline.reduce((point, [x, y]) => point.add(new T.Vector2(x, y)), new T.Vector2())
+    .multiplyScalar(1 / outline.length);
+  const contour = outline.map(([x, y]) => new T.Vector2(x, y));
+  if (T.ShapeUtils.isClockWise(contour)) contour.reverse();
+  const count = contour.length;
+  const positions = [middle.x, middle.y, foreheadAt(middle.x, middle.y) + .006];
+  const indices: number[] = [];
+  for (let ring = 1; ring <= 4; ring++) {
+    contour.forEach((point, i) => {
+      const x = T.MathUtils.lerp(middle.x, point.x, ring / 4);
+      const y = T.MathUtils.lerp(middle.y, point.y, ring / 4);
+      positions.push(x, y, foreheadAt(x, y) + .007);
+      const current = 1 + (ring - 1) * count + i;
+      const next = 1 + (ring - 1) * count + (i + 1) % count;
+      if (ring === 1) indices.push(0, current, next);
+      else indices.push(current - count, current, next, current - count, next, next - count);
+    });
+  }
+  const shape = new T.BufferGeometry();
+  shape.setAttribute('position', new T.Float32BufferAttribute(positions, 3));
+  shape.setIndex(indices);
+  shape.computeVertexNormals();
+  return mesh(parent, shape, material, [0, 0, 0], false);
+}
+
+function earLeather(parent: T.Object3D, side: number) {
+  // Broad at the fold, then narrowing into a low outward sweep.
+  const contour = [
+    [0, .076, -.027, .043, .035],
+    [.047, .034, -.016, .123, .077],
+    [.081, -.068, .006, .151, .096],
+    [.099, -.188, .039, .140, .082],
+    [.117, -.287, .071, .103, .054],
+    [.148, -.357, .085, .064, .029],
+    [.193, -.390, .074, .011, .007],
+  ];
+  const vertices: number[] = [], indices: number[] = [];
+  const segments = 22;
+  const axis = new T.CatmullRomCurve3(contour.map(([x,y,z]) => new T.Vector3(side*x,y,z)));
+  const radii = new T.CatmullRomCurve3(contour.map(([, , , width, depth], i) => new T.Vector3(width, depth, i)));
+  for (let i = 0; i <= 20; i++) {
+    const t = i / 20;
+    const center = axis.getPoint(t);
+    const width = radii.getPoint(t);
+    for (let j = 0; j < segments; j++) {
+      const angle = j / segments * TAU;
+      const ridge = 1 + .038 * Math.cos(angle * 5 + t * 7);
+      vertices.push(center.x + Math.cos(angle) * width.x * ridge, center.y, center.z + Math.sin(angle) * width.y * ridge);
+      if (i > 0) {
+        const next = i * segments + (j + 1) % segments;
+        const current = i * segments + j;
+        indices.push(current, current - segments, next, next, current - segments, next - segments);
+      }
+    }
+  }
+  const shape = new T.BufferGeometry();
+  shape.setAttribute('position', new T.Float32BufferAttribute(vertices, 3));
+  shape.setIndex(indices);
+  shape.computeVertexNormals();
+  mesh(parent, shape, coat);
 }
 
 function makeLeg(root:T.Object3D, side:number, front:boolean) {
@@ -59,67 +130,116 @@ function makeLeg(root:T.Object3D, side:number, front:boolean) {
 
 export function makeDexter(scene:T.Scene) {
   const root=group(scene,-2.28,0,.14);
-  root.name='Dexter';
+  root.name='Dexter — The Furious Little Stinkweasel';
+  const contactMaterial = new T.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: { strength: { value: .31 } },
+    vertexShader: `
+      varying vec2 contactUv;
+      void main() {
+        contactUv = uv * 2.0 - 1.0;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec2 contactUv;
+      uniform float strength;
+      void main() {
+        float softEdge = 1.0 - smoothstep(.10, 1.0, length(contactUv));
+        gl_FragColor = vec4(.025, .018, .043, softEdge * strength);
+      }
+    `,
+  });
+  const contact = mesh(root, new T.PlaneGeometry(1.36, 1.75), contactMaterial, [0,.022,-.048], false);
+  contact.rotation.x = -Math.PI / 2;
+  contact.raycast = () => {};
   const rig=group(root);
   const trunk=group(rig);
-  blob(trunk,coat,[0,0,-.10],[.442,.369,.69]);
-  blob(trunk,ridge,[0,.113,-.22],[.393,.263,.55]);
-  blob(trunk,coat,[0,-.02,-.47],[.408,.354,.37]);
-  blob(trunk,cream,[0,-.02,.364],[.388,.391,.31]);
-  for(const s of [-1,1]) {
-    for(let i=0;i<4;i++) {
-      lock(trunk,i%2?light:cream,[[s*(.18+i*.047),.20-i*.055,.48-i*.05],
-        [s*(.24+i*.041),.022-i*.031,.565-i*.09],[s*(.21+i*.052),-.28-i*.008,.495-i*.075]],.139-i*.009,.78);
-      lock(trunk,i%2?coat:ridge,[[s*.27,.18-i*.057,-.34],[s*.408,.04-i*.04,-.43-i*.025],[s*.385,-.14,-.61-i*.04]],.12,.72);
+  blob(trunk,coat,[0,-.014,-.14],[.419,.351,.642]);
+  blob(trunk,coat,[0,-.041,-.429],[.386,.326,.361]);
+  blob(trunk,cream,[0,-.004,.359],[.350,.348,.286]);
+  lock(trunk,cream,[[0,.26,.491],[.003,.032,.627],[-.028,-.355,.488]],.190,.78);
+  for(const side of [-1,1]) {
+    for(let i=0;i<6;i++) {
+      const f=i/5;
+      const x=.09+f*.244;
+      lock(trunk,i%3===0?light:cream,[[side*x,.208-f*.036,.487-f*.154],
+        [side*(x+.046),.018+f*.026,.592-f*.132],[side*(x+.017),-.334+f*.215,.499-f*.163]],
+      .105-f*.039,.58);
+      lock(trunk,i%2?coat:ridge,[[side*.263,.143-f*.247,-.22-f*.015],
+        [side*(.385-f*.026),.064-f*.198,-.402-f*.054],
+        [side*(.379-f*.042),-.025-f*.185,-.583-f*.061]],.083-f*.021,.51);
     }
-    blob(trunk,shadowCream,[s*.278,-.164,-.435],[.166,.18,.29]);
+    blob(trunk,shadowCream,[side*.278,-.152,-.462],[.154,.166,.252]);
   }
-  lock(trunk,light,[[0,.27,.50],[0,.03,.655],[.03,-.35,.596]],.2,.90);
+
   const head=group(rig,0,1.05,.49);
-  blob(head,coat,[0,.045,0],[.449,.385,.354]);
-  blob(head,ridge,[0,.20,-.054],[.387,.258,.273]);
-  blob(head,cream,[0,-.206,.146],[.353,.214,.242]);
-  lock(head,cream,[[0,.345,.205],[-.020,.268,.296],[0,.048,.364]],.067,.95);
+  blob(head,coat,[0,skull.y,skull.z],[skull.width,skull.height,skull.depth]);
+  const cheeks=blob(head,cream,[0,-.174,.139],[.309,.185,.229]);
+  cheeks.rotation.x=-.13;
+  marking(head,light,[[-.025,.360],[-.014,.330],[-.026,.349],[-.020,.311],[-.039,.293],
+    [-.024,.267],[-.020,.220],[-.013,.170],[.000,.130],[.009,.189],[.015,.245],
+    [.033,.290],[.022,.302],[.031,.348],[.013,.331],[.005,.367],[-.005,.321]]);
   const ears:T.Group[]=[],eyes:T.Group[]=[],brows:T.Mesh[]=[];
-  for(const s of [-1,1]){
-    const ear=group(head,s*.345,.24,-.056);
+  for(const side of [-1,1]){
+    const ear=group(head,side*.327,.201,-.028);
     ears.push(ear);
-    lock(ear,coat,[[0,.038,0],[s*.135,-.065,.045],[s*.137,-.30,.083],[s*.105,-.415,.098]],.21,.77);
-    blob(ear,coat,[s*.115,-.144,.047],[.163,.235,.147]);
-    lock(ear,ridge,[[s*.02,.105,-.055],[s*.152,.047,-.041],[s*.224,-.152,-.033]],.106,.76);
-    lock(ear,coat,[[s*.17,-.115,.077],[s*.142,-.29,.13],[s*.179,-.414,.155]],.115,.69);
-    lock(ear,coat,[[s*.11,-.156,.13],[s*.093,-.289,.163],[s*.049,-.413,.17]],.085,.74);
-    for(let t=0;t<3;t++){
-      const ox=.204+t*.055,oy=-.114-t*.019;
-      lock(head,t===0?tan:cream,[[s*ox,oy,.285-t*.04],[s*(ox+.031),oy-.093,.34-t*.055],[s*(ox+.066),oy-.187,.286-t*.055]],.101,.65);
+    earLeather(ear,side);
+    for(let i=0;i<5;i++){
+      const offset=side*(i-2)*.038;
+      lock(ear,i%4===0?ridge:coat,[[side*.061+offset,-.029,.052],
+        [side*.119+offset,-.184,.109-i*.005],
+        [side*.159+offset,-.335+i*.014,.101-i*.009]],.062-i*.004,.56);
     }
-    const eye=group(head,s*.173,.027,.309);
-    eye.rotation.y=s*.28;
-    eyes.push(eye);
-    blob(eye,inner,[0,0,.003],[.124,.106,.067]);
-    blob(eye,light,[0,-.014,.043],[.088,.074,.029]);
-    blob(eye,iris,[-s*.010,-.008,.064],[.063,.067,.023]);
-    blob(eye,nose,[-s*.010,-.008,.081],[.041,.049,.012]);
-    blob(eye,glint,[-.022,.016,.092],[.017,.016,.008],false);
-    blob(eye,glint,[.021,-.034,.09],[.007,.007,.005],false);
-    const lid=blob(head,coat,[s*.173,.084,.369],[.108,.039,.044]);
-    lid.rotation.z=s*.19;
-    const brow=blob(head,tan,[s*.177,.157,.334],[.101,.047,.036]);
-    brow.rotation.z=s*.26;
+    for(let i=0;i<3;i++){
+      lock(head,i===0?ridge:coat,[[side*(.207+i*.039),.275-i*.012,-.038],
+        [side*(.263+i*.041),.345-i*.008,-.035-i*.024],
+        [side*(.319+i*.054),.316-i*.052,-.086-i*.016]],.077-i*.008,.72);
+    }
+    const chevron: [number,number][]=[[.091,.128],[.099,.155],[.141,.174],[.176,.177],
+      [.210,.165],[.239,.138],[.216,.145],[.227,.125],[.197,.135],[.171,.111],[.132,.106]];
+    const brow=marking(head,tan,chevron.map(([x,y])=>[side*x,y]));
     brows.push(brow);
-    blob(head,light,[s*.090,-.131,.348],[.151,.108,.127]);
+    for(let i=0;i<6;i++){
+      const x=.181+i*.026,y=-.061-i*.019;
+      lock(head,i<3?tan:i%2?cream:light,[[side*x,y,.266-i*.020],
+        [side*(x+.036),y-.054,.303-i*.031],
+        [side*(x+.100),y-.082-i*.008,.233-i*.025]],.077-i*.007,.49);
+    }
+
+    const eye=group(head,side*.157,.026,.295);
+    eye.rotation.y=side*.25;
+    eye.rotation.z=side*.30;
+    eyes.push(eye);
+    blob(eye,inner,[0,0,0],[.109,.080,.048]);
+    blob(eye,light,[0,-.010,.031],[.082,.046,.028]);
+    blob(eye,iris,[-side*.008,-.004,.053],[.051,.046,.020]);
+    blob(eye,nose,[-side*.008,-.004,.069],[.035,.038,.010]);
+    blob(eye,glint,[-.020,.014,.077],[.010,.011,.006],false);
+    blob(eye,glint,[.015,-.025,.078],[.004,.004,.004],false);
+
+    const upperLid=blob(head,coat,[side*.155,.064,.328],[.105,.035,.036]);
+    upperLid.rotation.z=side*.33;
+    const muzzlePad=blob(head,light,[side*.061,-.112,.325],[.115,.078,.120]);
+    muzzlePad.rotation.z=side*.09;
+    for(let i=0;i<3;i++){
+      blob(head,shadowCream,[side*(.102+i*.017),-.108-(i%2)*.017,.423-i*.014],[.005,.005,.004],false);
+    }
   }
-  const muzzle=group(head,0,-.195,.31);
-  blob(muzzle,inner,[0,-.045,.048],[.145,.046,.092]);
-  blob(muzzle,cream,[0,-.081,.031],[.14,.064,.09]);
-  const mouth=group(muzzle,0,-.045,.124);
-  blob(mouth,inner,[0,0,0],[.119,.038,.018]);
-  blob(mouth,tongue,[.020,-.02,.017],[.041,.022,.01]);
-  blob(mouth,tooth,[-.064,.013,.015],[.022,.014,.009]);
-  blob(head,nose,[0,-.116,.454],[.111,.067,.072]);
-  blob(head,ridge,[-.024,-.096,.508],[.051,.014,.017]);
-  tube(head,inner,[[0,-.159,.473],[0,-.196,.467],[-.091,-.217,.438],[-.138,-.196,.417]],.010,12);
-  tube(head,inner,[[0,-.187,.473],[.093,-.218,.437],[.134,-.196,.416]],.010,12);
+  const muzzle=group(head,0,-.194,.322);
+  blob(muzzle,light,[0,-.017,.018],[.140,.058,.106]);
+  const mouth=group(muzzle,0,-.006,.116);
+  blob(mouth,inner,[0,0,0],[.097,.032,.015]);
+  blob(mouth,tongue,[.016,-.014,.012],[.036,.017,.008]);
+  blob(mouth,tooth,[-.052,.011,.012],[.018,.009,.008]);
+  const noseBridge=blob(head,nose,[0,-.079,.420],[.094,.055,.069]);
+  noseBridge.rotation.x=-.25;
+  blob(head,inner,[0,-.103,.445],[.057,.033,.041]);
+  blob(head,ridge,[-.020,-.064,.476],[.039,.011,.010]);
+  tube(head,inner,[[0,-.119,.465],[0,-.155,.449],[-.044,-.165,.439],[-.087,-.175,.418],[-.108,-.189,.397]],.007,11);
+  tube(head,inner,[[0,-.155,.449],[.046,-.163,.439],[.086,-.174,.419],[.109,-.185,.398]],.007,11);
+  tube(head,shadowCream,[[-.047,-.209,.425],[0,-.220,.426],[.042,-.210,.424]],.0045,8);
 
   const tail=group(rig,0,.64,-.67);
   lock(tail,coat,[[0,0,0],[.15,.17,-.26],[.23,.43,-.39],[.17,.68,-.20],[.065,.72,.04],[-.08,.59,.09]],.29,.77);
@@ -185,6 +305,8 @@ export function makeDexter(scene:T.Scene) {
       angle+=delta*Math.min(1,dt*(portrait?6:4.5));
       root.rotation.y=angle;
       root.position.y=ground(root.position.x,root.position.z)+lift*1.24;
+      contact.position.y=.022-lift*1.24;
+      contactMaterial.uniforms.strength.value=.31-lift*.23;
       const follow=1-Math.exp(-dt*7);
       walk=T.MathUtils.lerp(walk,wanted,follow);
       sit=T.MathUtils.lerp(sit,wantedSit,follow*.60);
@@ -206,8 +328,8 @@ export function makeDexter(scene:T.Scene) {
       mouth.scale.y=grin?1:.84;
       eyes.forEach((eye,i)=>{
         eye.scale.y=Math.max(.08,(surprise?1.19:1)-blink*.86-lay*.82);
-        brows[i].position.y=.157+(surprise?.061:0);
-        brows[i].rotation.z=(i?1:-1)*(mood==='side-eye'?.44:.26);
+        brows[i].position.y=surprise?.026:0;
+        brows[i].position.z=surprise?.014:0;
         ears[i].rotation.z=(i?1:-1)*(Math.sin(phase+.4)*.073*walk+(surprise?.10:0));
         ears[i].rotation.x=Math.sin(phase-.37)*walk*.11+lay*.16;
       });
