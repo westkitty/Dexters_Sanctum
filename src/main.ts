@@ -5,6 +5,7 @@ import { makeDrift } from './drift';
 import { makeGarden } from './garden';
 import { makeIncidents } from './incidents';
 import { ground, group } from './model';
+import { decodePostcard, encodePostcard, islandViewBounds, postcardPrefix, starLimit } from './postcard';
 import { halo, makeSky, sprite } from './sky';
 import { makeTerrain, onIsland } from './terrain';
 import { cueAt, smooth } from './timeline';
@@ -17,6 +18,9 @@ const quality=byId<HTMLSelectElement>('quality'), sound=byId<HTMLButtonElement>(
 const trouble=byId<HTMLButtonElement>('trouble'), postcard=byId<HTMLButtonElement>('postcard');
 const portraitButton=byId<HTMLButtonElement>('portrait');
 const guide=byId<HTMLDialogElement>('guide');
+const shareDialog=byId<HTMLDialogElement>('postcard-link');
+const address=byId<HTMLInputElement>('postcard-address');
+const copyStatus=byId('postcard-copy-status'), starTools=byId('star-tools');
 const tools=['moon','stars','garden','water'] as const;
 type Tool=typeof tools[number];
 type Quality='auto'|'high'|'low';
@@ -34,7 +38,7 @@ function getQuality():Quality {
 function setFallback(show:boolean){
   fallback.hidden=!show;
   world.hidden=show;
-  for(const id of [...tools,'sound','quality','trouble','postcard','portrait']) {
+  for(const id of [...tools,'sound','quality','trouble','postcard','portrait','share','remove-star']) {
     byId<HTMLButtonElement>(id).disabled=show;
   }
 }
@@ -90,7 +94,7 @@ function boot(){
     reflectInPond(subject);
 
   const constellations=group(scene);
-  const starCount=54;
+  const starCount=starLimit;
   const starNodes=Array.from({length:starCount},()=>{
     const node=sprite(constellations,sky.amber,.29,.95);
     node.visible=false;
@@ -152,12 +156,18 @@ function boot(){
       active=null;
       userInteracted=true;
       tools.forEach(id=>byId(id).setAttribute('aria-pressed','false'));
+      updateStarTools();
     }
     if(showNotice)announce(value?'Dexter, briefly permitting a portrait.':'Back to the island.');
+  }
+  function updateStarTools(){
+    starTools.hidden=active!=='stars'||stars.length===0;
   }
   function setTool(tool:Tool){
     active=active===tool?null:tool;
     tools.forEach(id=>byId(id).setAttribute('aria-pressed',String(active===id)));
+    if(active!=='stars')cursor.visible=false;
+    updateStarTools();
     if(active){
       userInteracted=true;
       setPortrait(false);
@@ -175,24 +185,68 @@ function boot(){
   function openSky(){
     return ndc.y>-.36&&!ray.intersectObjects([terrain.root,...water.surfaces,sky.globe],true).length;
   }
+  function renderConstellation(){
+    starNodes.forEach((node,i)=>{
+      const star=stars[i];
+      node.visible=Boolean(star);
+      if(!star)return;
+      node.position.copy(star);
+      if(i>0){
+        stars[i-1].toArray(positions,(i-1)*6);
+        star.toArray(positions,(i-1)*6+3);
+      }
+    });
+    lineGeom.setDrawRange(0,Math.max(0,stars.length-1)*2);
+    lineGeom.attributes.position.needsUpdate=true;
+    updateStarTools();
+  }
   function addStar(at:T.Vector2,verify:boolean){
     if(verify&&!openSky())return;
     if(!positionAtSky(at,hit))return;
     if(stars.length&&stars[stars.length-1].distanceTo(hit)<.48)return;
     if(stars.length>=starCount)stars.shift();
     stars.push(hit.clone());
-    stars.forEach((p,i)=>{
-      starNodes[i].visible=true;
-      starNodes[i].position.copy(p);
-      if(i>0){
-        positions.set(stars[i-1].toArray(),(i-1)*6);
-        positions.set(p.toArray(),(i-1)*6+3);
-      }
-    });
-    lineGeom.setDrawRange(0,(stars.length-1)*2);
-    lineGeom.attributes.position.needsUpdate=true;
+    renderConstellation();
     charge=Math.min(1,charge+.29);
     if(stars.length===1||stars.length%5===0)audio.chime('star');
+  }
+  function removeStar(){
+    if(active!=='stars'||!stars.pop())return;
+    if(stars.length===0&&starTools.contains(document.activeElement))canvas.focus();
+    renderConstellation();
+    announce('Last star removed.');
+  }
+  function showPostcardLink(){
+    const fragment=encodePostcard({
+      moon:moonArc,
+      yaw:T.MathUtils.clamp(yaw,...islandViewBounds.yaw),
+      pitch,
+      stars:stars.map(star=>[star.x,star.y,star.z]),
+    });
+    if(!fragment){announce('This view couldn’t be put in a link.');return;}
+    const link=new URL(window.location.href);
+    link.hash=fragment;
+    address.value=link.href;
+    copyStatus.textContent='';
+    shareDialog.showModal();
+  }
+  function restorePostcard(){
+    if(!location.hash.startsWith(postcardPrefix))return;
+    const saved=decodePostcard(location.hash);
+    if(!saved){announce('This postcard link couldn’t be opened.');return;}
+    if(shareDialog.open)shareDialog.close();
+    if(active)setTool(active);
+    setPortrait(false);
+    drag=null;
+    cursor.visible=false;
+    userInteracted=true;
+    introAmount=0;
+    moonArc=moonTarget=saved.moon;
+    yaw=yawTarget=saved.yaw;
+    pitch=pitchTarget=saved.pitch;
+    stars.splice(0,stars.length,...saved.stars.map(([x,y,z])=>new T.Vector3(x,y,z)));
+    renderConstellation();
+    announce('A living postcard from the Lantern Isle.');
   }
   function wake(point:T.Vector3){
     garden.awaken(point,time);
@@ -207,7 +261,7 @@ function boot(){
     announce('A ripple crossed the pool.');
   }
   function moveMoon(value:number){
-    moonTarget=T.MathUtils.clamp(value,-.95,.95);
+    moonTarget=T.MathUtils.clamp(value,...islandViewBounds.moon);
     if(Math.abs(moonTarget-moonArc)>.045)dexter.react('moon',time);
   }
   function activate(){
@@ -302,8 +356,8 @@ function boot(){
       addStar(ndc,true);
     }
     if(drag.type==='orbit'&&drag.moved){
-      yawTarget=T.MathUtils.clamp(yawTarget-dx*.004,portrait?-1.48:-.54,portrait?1.48:.50);
-      pitchTarget=T.MathUtils.clamp(pitchTarget+dy*.004,-.19,.25);
+      yawTarget=T.MathUtils.clamp(yawTarget-dx*.004,portrait?-1.48:islandViewBounds.yaw[0],portrait?1.48:islandViewBounds.yaw[1]);
+      pitchTarget=T.MathUtils.clamp(pitchTarget+dy*.004,...islandViewBounds.pitch);
     }
   });
   canvas.addEventListener('pointerup',event=>{
@@ -317,6 +371,11 @@ function boot(){
   canvas.addEventListener('lostpointercapture',()=>{drag=null;});
   canvas.addEventListener('blur',()=>{cursor.visible=false;});
   canvas.addEventListener('keydown',event=>{
+    if(active==='stars'&&event.key==='Backspace'){
+      event.preventDefault();
+      removeStar();
+      return;
+    }
     const x=Number(event.key==='ArrowRight')-Number(event.key==='ArrowLeft');
     const y=Number(event.key==='ArrowUp')-Number(event.key==='ArrowDown');
     if(x||y){
@@ -329,8 +388,8 @@ function boot(){
         cursorAt.y=T.MathUtils.clamp(cursorAt.y+y*.09,-.26,.85);
         positionAtSky(cursorAt,cursor.position);
       }else{
-        yawTarget=T.MathUtils.clamp(yawTarget+x*.11,portrait?-1.48:-.54,portrait?1.48:.50);
-        pitchTarget=T.MathUtils.clamp(pitchTarget+y*.07,-.19,.25);
+        yawTarget=T.MathUtils.clamp(yawTarget+x*.11,portrait?-1.48:islandViewBounds.yaw[0],portrait?1.48:islandViewBounds.yaw[1]);
+        pitchTarget=T.MathUtils.clamp(pitchTarget+y*.07,...islandViewBounds.pitch);
       }
     }
     if(event.key==='Enter'||event.key===' '){
@@ -347,7 +406,7 @@ function boot(){
     }
   });
   window.addEventListener('keydown',event=>{
-    if(event.altKey||event.ctrlKey||event.metaKey||guide.open||event.repeat||['INPUT','SELECT'].includes((event.target as HTMLElement).tagName))return;
+    if(event.altKey||event.ctrlKey||event.metaKey||guide.open||shareDialog.open||event.repeat||['INPUT','SELECT'].includes((event.target as HTMLElement).tagName))return;
     const keys:Record<string,Tool>={m:'moon',s:'stars',g:'garden',w:'water'};
     const key=event.key.toLowerCase();
     if(keys[key]){
@@ -361,6 +420,22 @@ function boot(){
   tools.forEach(id=>byId(id).addEventListener('click',()=>setTool(id)));
   trouble.addEventListener('click',makeTrouble);
   postcard.addEventListener('click',capture);
+  byId('share').addEventListener('click',showPostcardLink);
+  byId('remove-star').addEventListener('click',removeStar);
+  byId('copy-postcard').addEventListener('click',async()=>{
+    const link=address.value;
+    try{
+      await navigator.clipboard.writeText(link);
+      if(shareDialog.open&&address.value===link)copyStatus.textContent='Link copied.';
+    }catch{
+      if(!shareDialog.open||address.value!==link)return;
+      address.focus();
+      address.select();
+      copyStatus.textContent='Link selected. Copy it with your device’s copy command.';
+    }
+  });
+  address.addEventListener('focus',()=>address.select());
+  window.addEventListener('hashchange',restorePostcard);
   portraitButton.addEventListener('click',()=>setPortrait(!portrait,true));
   quality.value=selectedQuality;
   quality.addEventListener('change',()=>{
@@ -383,7 +458,7 @@ function boot(){
   function step(dt:number,dogSteps:number){
     const motion=media.matches?.24:1;
     moonArc=T.MathUtils.damp(moonArc,moonTarget,6,dt);
-    if(!portrait)yawTarget=T.MathUtils.clamp(yawTarget,-.54,.50);
+    if(!portrait)yawTarget=T.MathUtils.clamp(yawTarget,...islandViewBounds.yaw);
     yaw=T.MathUtils.damp(yaw,yawTarget,media.matches?16:5.5,dt);
     pitch=T.MathUtils.damp(pitch,pitchTarget,media.matches?16:5.5,dt);
     portraitBlend=T.MathUtils.damp(portraitBlend,portrait?1:0,media.matches?16:3.2,dt);
@@ -499,13 +574,14 @@ function boot(){
     const worldPoint=(v:T.Vector3)=>v.clone().project(camera).toArray();
     Object.assign(window,{sanctumProof:()=>{
       const dogCenter=dexter.root.getWorldPosition(new T.Vector3()).add(new T.Vector3(0,.80,0));
-      return {time,moonArc,dog:dexter.mood,dogPosition:dogCenter.toArray(),stars:stars.length,charge,
+      return {time,moonArc,yaw,pitch,starPositions:stars.map(star=>star.toArray()),dog:dexter.mood,dogPosition:dogCenter.toArray(),stars:stars.length,charge,
         incident:incidents.index,effects:lastFrame,reflectionFrames:water.reflectionCount,calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,pixelRatio:renderer.getPixelRatio(),memory:{...renderer.info.memory},
         moon:worldPoint(sky.moon.position),comet:worldPoint(incidents.comet.position),water:worldPoint(water.surfaces[0].position),
         garden:worldPoint(garden.lamps[2].lamp.getWorldPosition(new T.Vector3())),dexter:worldPoint(dogCenter)};
     }});
   }
   resize();
+  restorePostcard();
   step(0,1);
   start();
 }

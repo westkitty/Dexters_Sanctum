@@ -140,15 +140,17 @@ test('mobile touch and reduced motion',async ({browser},run)=>{
   await page.screenshot({path:run.outputPath('portrait-mobile.png')});
   await page.locator('#portrait').tap();
   await expect(page.locator('#portrait')).toHaveAttribute('aria-pressed','false');
-  await page.setViewportSize({width:320,height:740});
-  const blocked=await page.locator('.controls button, .top-actions button, .top-actions select').evaluateAll(buttons=>
-    buttons.flatMap(button=>{
-      const box=button.getBoundingClientRect();
-      const hit=document.elementFromPoint(box.x+box.width*.5,box.y+box.height*.5);
-      const fits=box.width>0&&box.height>=38&&box.x>=0&&box.right<=innerWidth&&box.y>=0&&box.bottom<=innerHeight;
-      return fits&&button.contains(hit)?[]:[{id:button.id,hit:hit?.id||hit?.tagName,fits}];
-    }));
-  expect(blocked).toEqual([]);
+  for(const viewport of [{width:390,height:844},{width:320,height:740}]){
+    await page.setViewportSize(viewport);
+    const blocked=await page.locator('.controls button, .top-actions button, .top-actions select').evaluateAll(buttons=>
+      buttons.flatMap(button=>{
+        const box=button.getBoundingClientRect();
+        const hit=document.elementFromPoint(box.x+box.width*.5,box.y+box.height*.5);
+        const fits=box.width>0&&box.height>=38&&box.x>=0&&box.right<=innerWidth&&box.y>=0&&box.bottom<=innerHeight;
+        return fits&&button.contains(hit)?[]:[{id:button.id,hit:hit?.id||hit?.tagName,fits}];
+      }));
+    expect(blocked,`controls at ${viewport.width}px`).toEqual([]);
+  }
   expect(errors).toEqual([]);
   await page.close();
 });

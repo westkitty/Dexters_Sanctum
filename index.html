@@ -18,11 +18,14 @@
       <p>A small world under questionable management.</p>
     </header>
     <div class="top-actions" aria-label="World settings">
-      <button id="sound" type="button" aria-pressed="false">♪ <span>Sound off</span></button>
+      <button id="sound" type="button" aria-label="Sound" title="Sound" aria-pressed="false">♪ <span>Sound off</span></button>
       <label class="quality"><span class="sr-only">Rendering quality</span><select id="quality"><option value="auto">Quality · Auto</option><option value="high">Quality · High</option><option value="low">Quality · Low</option></select></label>
     </div>
     <p id="cue" aria-hidden="true"></p>
     <p id="notice" role="status" aria-live="polite"></p>
+    <div id="star-tools" hidden>
+      <button id="remove-star" type="button" title="Remove last star (Backspace)">↶ <span>Remove last star</span></button>
+    </div>
     <footer class="controls">
       <div class="coordinates" aria-hidden="true"><span>✧</span> THE LANTERN ISLE</div>
       <nav aria-label="World interactions">
@@ -35,6 +38,7 @@
       <div class="utilities">
         <button id="portrait" type="button" aria-pressed="false" aria-label="Dexter portrait" title="Dexter portrait (D)">◈ <span>Dexter</span></button>
         <button id="postcard" type="button" aria-label="Save postcard" title="Save postcard">▧ <span>Postcard</span></button>
+        <button id="share" type="button" aria-label="Share a living postcard" title="Share a living postcard"><span class="share-icon" aria-hidden="true"></span> <span class="control-label">Link</span></button>
         <button id="help" type="button" aria-label="How to explore" title="How to explore">?</button>
       </div>
     </footer>
@@ -42,9 +46,22 @@
       <form method="dialog">
         <h2>A visitor’s guide</h2>
         <p>Drag the moon along its arc. Pick Stars and draw across the open sky. Touch the garden, lanterns, cottage or water to see what stirs. Drag elsewhere to look around. Click Dexter or press D for a closer look.</p>
-        <p>For keyboard play, choose a tool, then focus the scene. Arrow keys move the moon or star cursor. Enter plants a star, awakens the garden or touches the pool.</p>
+        <p>For keyboard play, choose a tool, then focus the scene. Arrow keys move the moon or star cursor. Enter plants a star, awakens the garden or touches the pool. Backspace removes the last star.</p>
         <p>Dexter manages his own schedule. Making trouble is entirely optional.</p>
         <button autofocus>Back to the island</button>
+      </form>
+    </dialog>
+    <dialog id="postcard-link" aria-labelledby="postcard-link-title">
+      <form method="dialog">
+        <h2 id="postcard-link-title">A living postcard</h2>
+        <p>Open this link to revisit your moon, island view, and constellation. Dexter will be going about his night.</p>
+        <label class="sr-only" for="postcard-address">Postcard link</label>
+        <input id="postcard-address" type="url" readonly spellcheck="false">
+        <div class="postcard-actions">
+          <button id="copy-postcard" type="button" autofocus>Copy link</button>
+          <button>Close</button>
+        </div>
+        <p id="postcard-copy-status" role="status" aria-live="polite"></p>
       </form>
     </dialog>
     <section id="fallback" hidden><h2>The island is out of view</h2><p>This scene needs WebGL. Enable hardware acceleration or open it in a browser with WebGL support.</p><button id="retry">Try again</button></section>
