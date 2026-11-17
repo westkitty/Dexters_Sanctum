@@ -1,19 +1,31 @@
 import * as T from 'three';
+import { Reflector } from 'three/addons/objects/Reflector.js';
 import { blob, ground, group, mesh, randomFrom, TAU } from './model';
 import { sprite } from './sky';
 
+export const waterReflectionLayer = 3;
+
+export function reflectInPond(object: T.Object3D) {
+  object.traverse(child => child.layers.enable(waterReflectionLayer));
+}
+
 export function makeWater(scene:T.Scene, aura:T.Texture) {
   const root=group(scene);
-  const poolMat=new T.ShaderMaterial({
+  const waterShader={
     uniforms:{
       clock:{value:0}, reflection:{value:0}, sparkle:{value:0}, moonWorld:{value:new T.Vector3()},
       pulse:{value:new T.Vector3(2.7,.89,9)},
+      tDiffuse:{value:null},color:{value:new T.Color()},
+      textureMatrix:{value:new T.Matrix4()},reflectionMix:{value:0},
     },
     vertexShader:`
       varying vec2 vUv;
       varying vec3 worldPoint;
+      varying vec4 reflectionPoint;
+      uniform mat4 textureMatrix;
       void main(){
         vUv=uv;
+        reflectionPoint=textureMatrix*vec4(position,1.0);
         worldPoint=(modelMatrix*vec4(position,1.0)).xyz;
         gl_Position=projectionMatrix*viewMatrix*vec4(worldPoint,1.0);
       }
@@ -23,6 +35,9 @@ export function makeWater(scene:T.Scene, aura:T.Texture) {
       varying vec3 worldPoint;
       uniform float clock,reflection,sparkle;
       uniform vec3 moonWorld,pulse;
+      uniform sampler2D tDiffuse;
+      uniform float reflectionMix;
+      varying vec4 reflectionPoint;
       void main(){
         vec2 p=vUv*2.-1.;
         float flow=sin(p.y*21.+p.x*7.+sin(p.x*7.+clock*.72)*1.42-clock*1.7);
@@ -41,8 +56,14 @@ export function makeWater(scene:T.Scene, aura:T.Texture) {
         float moonTrail=exp(-pow((p.x-reflection*.63+p.y*.28)*4.2,2.));
         vec3 water=mix(vec3(.019,.107,.139),vec3(.064,.234,.198),.38+banks*.13+shore*.19);
         water=mix(water,vec3(.051,.127,.174),fresnel*.61);
-        water+=vec3(.15,.38,.31)*grain*(.61+shore*.43);
-        water+=vec3(.48,.47,.27)*moonlight*.91;
+        if(reflectionMix>.01){
+          vec2 uv=reflectionPoint.xy/reflectionPoint.w;
+          vec2 distortion=vec2(crossFlow*.0015+tiny*.00035,flow*.0025);
+          vec3 reflected=texture2D(tDiffuse,uv+distortion).rgb;
+          water=mix(water,reflected*vec3(.71,.86,.81),reflectionMix*(.31+.65*fresnel));
+        }
+        water+=vec3(.12,.26,.22)*grain*(.48+shore*.40);
+        water+=vec3(.38,.35,.22)*moonlight*.70;
         water+=vec3(.18,.31,.23)*moonTrail*(grain+.11)*.53;
         water+=vec3(.18,.55,.48)*(touch*.61 + sparkle*.25);
         gl_FragColor=vec4(water,1.);
@@ -50,7 +71,7 @@ export function makeWater(scene:T.Scene, aura:T.Texture) {
         #include <colorspace_fragment>
       }
     `,
-  });
+  };
   const pond=new T.Shape();
   for(let i=0;i<=96;i++){
     const angle=i/96*TAU;
@@ -63,8 +84,22 @@ export function makeWater(scene:T.Scene, aura:T.Texture) {
   const pondGeometry=new T.ShapeGeometry(pond);
   const pondUv=pondGeometry.attributes.uv;
   for(let i=0;i<pondUv.count;i++)pondUv.setXY(i,(pondUv.getX(i)+1.65)/3.5,(pondUv.getY(i)+2)/4);
-  const pool=mesh(root,pondGeometry,poolMat,[2.7,.315,.89],false);
+  const pool=new Reflector(pondGeometry,{
+    shader:waterShader,clipBias:.005,textureWidth:384,textureHeight:224,multisample:0,
+  });
+  pool.position.set(2.7,.315,.89);
   pool.rotation.x=-Math.PI/2;
+  root.add(pool);
+  const poolMat=pool.material as T.ShaderMaterial;
+  const redraw=pool.onBeforeRender.bind(pool);
+  pool.onBeforeRender=()=>{};
+  pool.camera.layers.set(waterReflectionLayer);
+  const nightMirror=new T.Color('#202b37');
+  const projectedCenter=new T.Vector3();
+  let lastReflection=-Infinity, reflectionCount=0;
+  const reflectedResolution={width:384,height:224};
+  const reflectionTarget=pool.getRenderTarget();
+  const drawGroup=new T.Group();
   const fallMat = new T.ShaderMaterial({
     transparent:true,side:T.DoubleSide,depthWrite:false,blending:T.AdditiveBlending,
     uniforms:{ clock:poolMat.uniforms.clock },
@@ -127,7 +162,38 @@ export function makeWater(scene:T.Scene, aura:T.Texture) {
   spray.frustumCulled=false;
   root.add(spray);
   let last=-20, index=0,reactionX=2.7,reactionZ=.89;
-  return {surfaces:[pool],ripple(position:T.Vector3,time:number){
+  return {
+    surfaces:[pool],
+    get reflectionCount(){return reflectionCount;},
+    dispose(){reflectionTarget.dispose();},
+    prepareReflection(renderer:T.WebGLRenderer,scene:T.Scene,camera:T.Camera,time:number,enabled:boolean,hi:boolean,force=false){
+      projectedCenter.copy(pool.position).project(camera);
+      const inView=projectedCenter.z<1&&Math.abs(projectedCenter.x)<1.42&&Math.abs(projectedCenter.y)<1.31;
+      if(!enabled||!inView||!renderer.extensions.has('EXT_color_buffer_float')){
+        poolMat.uniforms.reflectionMix.value=0;
+        lastReflection=-Infinity;
+        return;
+      }
+      if(!force&&time-lastReflection<1/(hi?15:9))return;
+      const width=hi?576:384, height=hi?320:224;
+      if(width!==reflectedResolution.width||height!==reflectedResolution.height){
+        reflectionTarget.setSize(width,height);
+        reflectedResolution.width=width;
+        reflectedResolution.height=height;
+      }
+      const background=scene.background;
+      try{
+        scene.background=nightMirror;
+        pool.updateWorldMatrix(true,false);
+        redraw(renderer,scene,camera,pool.geometry,poolMat,drawGroup);
+        poolMat.uniforms.reflectionMix.value=.81;
+        lastReflection=time;
+        reflectionCount++;
+      }finally{
+        scene.background=background;
+      }
+    },
+    ripple(position:T.Vector3,time:number){
     reactionX=position.x;reactionZ=position.z;
     for(let i=0;i<3;i++){
       const entry=rings[index++%rings.length];

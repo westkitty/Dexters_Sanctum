@@ -1,13 +1,14 @@
 import * as T from 'three';
 import { makeAudio } from './audio';
 import { makeDexter } from './dexter';
+import { makeDrift } from './drift';
 import { makeGarden } from './garden';
 import { makeIncidents } from './incidents';
 import { ground, group } from './model';
 import { halo, makeSky, sprite } from './sky';
 import { makeTerrain, onIsland } from './terrain';
 import { cueAt, smooth } from './timeline';
-import { makeWater } from './water';
+import { makeWater, reflectInPond } from './water';
 import './style.css';
 
 const byId=<E extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as E;
@@ -79,11 +80,14 @@ function boot(){
   const sky=makeSky(scene);
   const blue=halo('#54dccc');
   const terrain=makeTerrain(scene,sky.amber);
+  const drift=makeDrift(scene,sky.haze);
   const water=makeWater(scene,blue);
   const garden=makeGarden(scene,sky.amber,blue);
   const dexter=makeDexter(scene);
   const incidents=makeIncidents(scene,sky.amber,blue);
   const audio=makeAudio();
+  for(const subject of [key,hemi,rim,fill,terrain.root,garden.reflective,sky.face])
+    reflectInPond(subject);
 
   const constellations=group(scene);
   const starCount=54;
@@ -207,11 +211,15 @@ function boot(){
     if(Math.abs(moonTarget-moonArc)>.045)dexter.react('moon',time);
   }
   function activate(){
-    const surface=ray.intersectObjects(water.surfaces,false)[0];
-    if(surface&&(!active||active==='water')){splash(surface.point);return;}
-    const plant=(!active||active==='garden')&&ray.intersectObjects([...garden.pickable,terrain.cottage.house],true)[0];
+    const surface=(!active||active==='water')?ray.intersectObjects(water.surfaces,false)[0]:undefined;
+    const plant=(!active||active==='garden')?ray.intersectObjects([...garden.pickable,terrain.cottage.house],true)[0]:undefined;
+    const dog=active?undefined:ray.intersectObject(dexter.root,true)[0];
+    if(dog&&dog.distance<Math.min(surface?.distance??Infinity,plant?.distance??Infinity)){
+      setPortrait(!portrait,true);
+      return;
+    }
+    if(surface&&surface.distance<(plant?.distance??Infinity)){splash(surface.point);return;}
     if(plant){wake(plant.point);return;}
-    if(!active&&ray.intersectObject(dexter.root,true).length){setPortrait(!portrait,true);return;}
     if(active==='garden'&&ray.ray.intersectPlane(groundPlane,hit)&&onIsland(hit.x,hit.z))wake(hit);
   }
   function makeTrouble(){
@@ -224,11 +232,17 @@ function boot(){
     audio.chime(event.kind);
     announce(event.notice,event.duration-.4);
   }
+  function updatePondReflection(force=false){
+    const high=selectedQuality==='high';
+    const enabled=high||(selectedQuality==='auto'&&!mobile&&adaptiveScale===1);
+    water.prepareReflection(renderer,scene,camera,time,enabled,high,force);
+  }
   function capture(){
     const size=renderer.getSize(new T.Vector2());
     const originalRatio=renderer.getPixelRatio();
     const exportRatio=Math.max(originalRatio,Math.min(2.6,1800/size.x,2200/size.y));
     renderer.setPixelRatio(exportRatio);
+    updatePondReflection(true);
     renderer.render(scene,camera);
     const result=document.createElement('canvas');
     result.width=canvas.width;
@@ -396,13 +410,17 @@ function boot(){
     key.color.copy(moonLight.copy(colorWarm).lerp(colorCool,(moonArc+1)*.32));
     key.intensity=2.35+charge*.50+lastFrame.sneeze*.49;
     hemi.intensity=1.56+charge*.31+lastFrame.gravity*.26;
+    rim.intensity=1.68+portraitBlend*.44+lastFrame.shower*.13;
+    fill.intensity=.80+portraitBlend*.27;
     scene.backgroundIntensity=.96+moonArc*.08+lastFrame.shower*.08;
     scene.fog!.color.copy(horizonWarm).lerp(horizonCool,(moonArc+1)*.50);
     const moment=userInteracted?0:smooth(10,inspectBegin,time)*(1-smooth(inspectEnd,20,time));
     water.update(time,motion,moonArc,charge+moment*.57,sky.moon.position);
     terrain.cottage.warmLight.intensity=9.6+Math.sin(time*.85)*1.1+lastFrame.parade*7;
     terrain.cottage.update(time,motion);
+    drift.update(time,motion);
     garden.update(time,motion,lastFrame.parade,lastFrame.gravity);
+    terrain.illuminate(garden.lamps);
     for(let i=0;i<dogSteps;i++)dexter.update(time,1/60,motion,lastFrame.gravity,camera.position,portrait);
     if(time>78&&Math.floor(time/83)!==Math.floor((time-dt)/83)&&!lastFrame.active&&time>=noticeUntil)announce('Nothing suspicious. Probably.',3.2);
     charge*=Math.exp(-dt*.35);
@@ -426,6 +444,7 @@ function boot(){
     const dogSteps=Math.floor(accumulator*60);
     accumulator-=dogSteps/60;
     step(Math.min(.25,elapsed),dogSteps);
+    updatePondReflection();
     renderer.render(scene,camera);
     if(!ready){ready=true;canvas.dataset.ready='true';}
     animation=requestAnimationFrame(frame);
@@ -472,6 +491,7 @@ function boot(){
       if(object instanceof T.InstancedMesh)dispose(object);
     });
     sky.dispose();
+    water.dispose();
     renderer.dispose();
   });
   window.addEventListener('pageshow',start);
@@ -480,7 +500,7 @@ function boot(){
     Object.assign(window,{sanctumProof:()=>{
       const dogCenter=dexter.root.getWorldPosition(new T.Vector3()).add(new T.Vector3(0,.80,0));
       return {time,moonArc,dog:dexter.mood,dogPosition:dogCenter.toArray(),stars:stars.length,charge,
-        incident:incidents.index,effects:lastFrame,calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,pixelRatio:renderer.getPixelRatio(),memory:{...renderer.info.memory},
+        incident:incidents.index,effects:lastFrame,reflectionFrames:water.reflectionCount,calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,pixelRatio:renderer.getPixelRatio(),memory:{...renderer.info.memory},
         moon:worldPoint(sky.moon.position),comet:worldPoint(incidents.comet.position),water:worldPoint(water.surfaces[0].position),
         garden:worldPoint(garden.lamps[2].lamp.getWorldPosition(new T.Vector3())),dexter:worldPoint(dogCenter)};
     }});

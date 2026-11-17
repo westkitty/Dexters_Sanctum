@@ -101,26 +101,31 @@ h2{font:34px Georgia,serif;margin:0 0 12px;color:#f0d5a3}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 @media(max-width:780px){
   .masthead{top:24px}
-  .top-actions{bottom:82px;right:var(--side);font-size:11px}
-  .controls{grid-template-columns:1fr auto;gap:6px}
-  .coordinates{display:none}
-  .controls nav{justify-content:space-around;gap:2px;padding:4px}
-  .controls nav button{
-    font-size:15px;padding:4px 6px;min-height:42px;
-    display:flex;flex-direction:column;justify-content:center;align-items:center;line-height:1.1;
+  .top-actions{
+    bottom:calc(max(22px,env(safe-area-inset-bottom)) + 63px);
+    right:var(--side);gap:4px;font-size:10px;
   }
-  .controls nav button span{font-size:9px}
-  #trouble{margin-left:0;padding-inline:5px}
-  .utilities{gap:3px}
-  .utilities button{font-size:13px;padding:6px;min-width:27px;min-height:42px}
-  .utilities span{display:none}
-  #notice,#cue{bottom:131px}
+  .top-actions button,.top-actions select{min-height:38px;padding:6px 8px}
+  .controls{grid-template-columns:minmax(0,1fr);gap:8px;pointer-events:none}
+  .controls nav,.utilities{pointer-events:auto}
+  .coordinates{display:none}
+  .controls nav{grid-row:2;justify-content:stretch;gap:2px;padding:4px}
+  .controls nav button{
+    flex:1 1 0;font-size:16px;padding:5px 4px;min-height:45px;
+    display:flex;flex-direction:column;justify-content:center;align-items:center;line-height:1.12;
+  }
+  .controls nav button span{font-size:10px}
+  #trouble{flex-grow:1.48;margin-left:0;padding-inline:5px}
+  .utilities{grid-row:1;justify-self:start;gap:4px}
+  .utilities button{font-size:10px;padding:5px 7px;min-width:29px;min-height:38px}
+  #notice,#cue{bottom:calc(max(22px,env(safe-area-inset-bottom)) + 115px)}
 }
 @media(max-width:380px){
   :root{--side:10px}
   h1{font-size:40px}
-  .controls nav button{padding-inline:4px}
-  .controls nav button span{font-size:8px}
+  .controls nav button span{font-size:9px}
+  .utilities button{padding-inline:6px}
+  #postcard span{display:none}
 }
 @media(max-height:530px) and (min-width:781px){
   h1{font-size:48px}

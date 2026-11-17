@@ -5,6 +5,7 @@ type Proof = {
   time: number;
   moonArc: number;
   dog: string;
+  reflectionFrames: number;
   dogPosition: number[];
   stars: number;
   effects: Record<string, number | boolean>;
@@ -105,6 +106,17 @@ test('desktop island, pointer and keyboard tools, postcard, sound, and every inc
   await expect.poll(()=>proof(page).then(s=>s.dog)).toBe('portrait');
   await page.keyboard.press('Escape');
   await expect(page.locator('#portrait')).toHaveAttribute('aria-pressed','false');
+  const hasReflectionTarget=await page.locator('canvas').evaluate(canvas=>
+    Boolean((canvas as HTMLCanvasElement).getContext('webgl2')?.getExtension('EXT_color_buffer_float')));
+  const reflectionBefore=(await proof(page)).reflectionFrames;
+  await page.locator('#quality').selectOption('high');
+  if(hasReflectionTarget){
+    await expect.poll(()=>proof(page).then(s=>s.reflectionFrames),{timeout:12000}).toBeGreaterThan(reflectionBefore);
+  }
+  await page.locator('#quality').selectOption('low');
+  const cappedReflection=(await proof(page)).reflectionFrames;
+  await page.evaluate(()=>new Promise<void>(finish=>requestAnimationFrame(()=>requestAnimationFrame(()=>finish()))));
+  expect((await proof(page)).reflectionFrames).toBe(cappedReflection);
   expect(errors).toEqual([]);
 });
 
@@ -128,6 +140,15 @@ test('mobile touch and reduced motion',async ({browser},run)=>{
   await page.screenshot({path:run.outputPath('portrait-mobile.png')});
   await page.locator('#portrait').tap();
   await expect(page.locator('#portrait')).toHaveAttribute('aria-pressed','false');
+  await page.setViewportSize({width:320,height:740});
+  const blocked=await page.locator('.controls button, .top-actions button, .top-actions select').evaluateAll(buttons=>
+    buttons.flatMap(button=>{
+      const box=button.getBoundingClientRect();
+      const hit=document.elementFromPoint(box.x+box.width*.5,box.y+box.height*.5);
+      const fits=box.width>0&&box.height>=38&&box.x>=0&&box.right<=innerWidth&&box.y>=0&&box.bottom<=innerHeight;
+      return fits&&button.contains(hit)?[]:[{id:button.id,hit:hit?.id||hit?.tagName,fits}];
+    }));
+  expect(blocked).toEqual([]);
   expect(errors).toEqual([]);
   await page.close();
 });

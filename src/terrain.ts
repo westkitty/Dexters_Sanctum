@@ -5,8 +5,8 @@ import { sprite } from './sky';
 import { bakeStatic, finish } from './surfaces';
 
 const rand = randomFrom(9183);
-const stone = ['#40464b','#56535a','#564a50','#333946','#766561','#4e5660'];
-const greens = ['#40583f','#55634a','#465449','#5f6851','#394f43','#536353','#383f44'];
+const stone = ['#5a6267','#716b6c','#63575b','#45515c','#8a7668','#586974'];
+const greens = ['#50664a','#626f4d','#4b5d4b','#6e7552','#445c4a','#536658','#4a5553'];
 
 function rim(theta: number) {
   return 1 + .07*Math.sin(theta*3+1) + .06*Math.cos(theta*5-.3) + .045*Math.sin(theta*9);
@@ -21,20 +21,24 @@ export function inPool(x: number, z: number, margin = 1) {
 }
 
 function islandGeometry() {
-  const rings = [[.039,0],[.21,0],[.45,0],[.67,0],[.84,0],[.97,0],[1.02,-.30],[.96,-.87],[.78,-1.65],[.68,-2.55],[.42,-3.35],[.18,-4.25],[0,-4.55]];
+  const rings = [[.039,0],[.21,0],[.45,0],[.67,0],[.84,0],[.965,0],
+    [.998,-.12],[.975,-.43],[.914,-.76],[.891,-1.02],[.792,-1.59],
+    [.725,-1.96],[.675,-2.48],[.52,-2.91],[.412,-3.41],[.20,-4.05],[.015,-4.45]];
   const b = 96;
   const positions: number[] = [], indices: number[] = [], colors: number[] = [], uv: number[] = [];
   rings.forEach(([ratio,y], row) => {
     for (let j = 0; j < b; j++) {
       const theta = j/b*TAU;
-      const rough = rim(theta) * (row < 6 ? 1 : .90 + .16*rand());
-      const x = Math.cos(theta) * 5.75 * ratio * rough + Math.max(0,row-7)*.17;
+      const seam=.035*Math.sin(theta*16+y*.64)+.018*Math.sin(theta*31-y*1.8);
+      const rough = rim(theta) * (row < 6 ? 1 : .965 + seam + .025*rand());
+      const x = Math.cos(theta) * 5.75 * ratio * rough + Math.max(0,-y-.62)*.21;
       const z = Math.sin(theta) * 3.95 * ratio * rough;
-      positions.push(x, y + ground(x,z)+(row>5 ? (rand()-.5)*.41 : 0), z);
+      const shelves=row>5?(Math.sin(theta*3.0+y*.35)*.19+Math.sin(theta*9.0+y*.9)*.09)*Math.min(1,-y*1.75):0;
+      positions.push(x, y + ground(x,z)+shelves, z);
       uv.push(x*.68+y*.23,z*.65-y*.61);
       const variety = .5 + Math.sin(theta*7+y*.94)*.23 + Math.sin(theta*13-y*2)*.17;
       const top = greens[Math.min(greens.length-1,Math.floor(variety*greens.length))];
-      const edge = stone[(row+Math.floor(rand()*3))%stone.length];
+      const edge = stone[(row+(Math.sin(theta*5+y*.65)>.48?1:0))%stone.length];
       const tint = new T.Color(row<6?top:edge);
       tint.multiplyScalar(.89+rand()*.22);
       colors.push(tint.r,tint.g,tint.b);
@@ -56,19 +60,72 @@ function islandGeometry() {
 
 export function makeTerrain(scene: T.Scene, halo: T.Texture) {
   const root = group(scene);
-  const soil = finish('#d1ccb3','earth',.96);
+  const lanternPatches = { value: Array.from({length:7},()=>new T.Vector4()) };
+  const soil = finish('#d7d1bd','earth',.96);
+  soil.onBeforeCompile = shader => {
+    shader.uniforms.lanternPatches=lanternPatches;
+    shader.vertexShader='varying vec3 geologyPoint;\n'+shader.vertexShader.replace(
+      '#include <begin_vertex>','#include <begin_vertex>\ngeologyPoint = position;',
+    );
+    shader.fragmentShader='varying vec3 geologyPoint;\nuniform vec4 lanternPatches[7];\n'+shader.fragmentShader.replace('#include <color_fragment>', `
+      #include <color_fragment>
+      vec3 p=geologyPoint;
+      float bluff=1.0-smoothstep(-.31,.02,p.y);
+      float fold=p.y + sin(p.x*1.21)*.11 + sin(p.z*1.7-p.x*.78)*.12;
+      float beds=sin(fold*21.4 + .63*sin(p.x*3.2) + .43*cos(p.z*4.4));
+      float mineral=smoothstep(.54,.93,sin(fold*12.3 + sin(p.x*4.0+p.z*.7)*1.06));
+      float moss=sin(p.x*10.8 + sin(p.z*11.4)*1.21) * cos(p.z*13.0-p.x*1.1);
+      diffuseColor.rgb*=1.0 + .12*moss*(1.0-bluff) + .125*beds*bluff;
+      diffuseColor.rgb=mix(diffuseColor.rgb, diffuseColor.rgb*vec3(1.22,1.18,1.12), mineral*bluff*.51);
+    `).replace('#include <opaque_fragment>', `
+      if(geologyPoint.y>-.22){
+        float lanternBounce=0.0;
+        for(int lamp=0;lamp<7;lamp++){
+          vec3 beam=lanternPatches[lamp].xyz-geologyPoint;
+          float d2=dot(beam,beam);
+          float bank=1.0-smoothstep(1.15,3.45,d2);
+          lanternBounce+=lanternPatches[lamp].w*bank*max(0.0,beam.y)/(1.0+d2*d2);
+        }
+        outgoingLight+=diffuseColor.rgb*vec3(2.14,1.03,.36)*lanternBounce;
+      }
+      #include <opaque_fragment>
+    `);
+  };
   soil.vertexColors = true;
   soil.side = T.DoubleSide;
   mesh(root,islandGeometry(),soil);
   const rock = new T.DodecahedronGeometry(1,0);
-  const cliffs = Array.from({length:140}, (_,i) => {
-    const a = rand()*TAU, row = (i%4 + rand()*.72)/4, ring = rim(a);
-    const distance = 1.015-.63*row;
-    return {x:Math.cos(a)*5.75*ring*distance+.5*row, z:Math.sin(a)*3.95*ring*distance,
-      y:-.25-row*3.62, sx:.18+rand()*.64, sy:.17+rand()*.52, sz:.18+rand()*.49,
-      yaw:rand()*TAU, lean:rand()*.6, color:new T.Color(i%6===0 ? '#586c6c' : stone[i%stone.length])};
+  const slab = new T.CylinderGeometry(.68,1,2,6,1);
+  slab.rotateY(.15);
+  const slabPosition=slab.attributes.position;
+  for(let i=0;i<slabPosition.count;i++){
+    const x=slabPosition.getX(i),y=slabPosition.getY(i),z=slabPosition.getZ(i);
+    const offset=Math.sin(x*17.4+z*9.0)*.21;
+    slabPosition.setXYZ(i,x+offset*.14,y+offset,z+y*.16);
+  }
+  slab.computeVertexNormals();
+  const shales=finish('#d3cbbb','stone');
+  shales.flatShading=true;
+  const cliffs = Array.from({length:100}, (_,i) => {
+    const band=i%5;
+    const a=i*2.399963+(rand()-.5)*.18;
+    const row=(band + rand()*.54)/5;
+    const distance=.985-.53*row;
+    const ring=rim(a);
+    return {x:Math.cos(a)*5.75*ring*distance+.78*row,z:Math.sin(a)*3.95*ring*distance,
+      y:-.33-row*3.65,sx:.18+rand()*.43,sy:.14+rand()*.37,sz:.10+rand()*.25,
+      yaw:-a+.27,lean:-.46+rand()*.59,color:new T.Color(stone[(band+1+i%3)%stone.length])};
   });
-  batches(root,rock,finish('#e1daca','stone'),cliffs,true);
+  batches(root,slab,shales,cliffs,true);
+
+  const scree = Array.from({length:87}, (_,i)=>{
+    const a=i*2.399963+rand()*.22, row=.1+rand()*.85;
+    const r=rim(a)*(1-.61*row);
+    const s=.043+rand()*.16;
+    return {x:Math.cos(a)*5.89*r+.60*row,y:-.47-row*3.71,z:Math.sin(a)*4.14*r,
+      sx:s*(.6+rand()),sy:s*.60,sz:s*.76,yaw:a,lean:rand()*.7,color:new T.Color(stone[i%stone.length])};
+  });
+  batches(root,rock,shales,scree);
   const path = Array.from({length:26},(_,i) => {
     const t = i/25;
     const x = -2.37 + t*3.5 + Math.sin(t*TAU)*.25, z = -.16+t*3.27;
@@ -118,7 +175,16 @@ export function makeTerrain(scene: T.Scene, halo: T.Texture) {
   batches(root,new T.IcosahedronGeometry(1,0),matte('#aaa69b'),vines);
 
   const cottage=makeCottage(root,halo);
-  return {root,cottage};
+  return {root,cottage,
+    illuminate(lamps:readonly {lamp:T.Object3D;stand:T.Object3D;shine:T.Sprite}[]){
+      for(let i=0;i<lanternPatches.value.length;i++){
+        const {lamp,stand,shine}=lamps[i];
+        const power=shine.material.opacity*.70;
+        lanternPatches.value[i].set(lamp.position.x+stand.position.x,lamp.position.y+stand.position.y,
+          lamp.position.z+stand.position.z,power);
+      }
+    },
+  };
 }
 
 function makeCottage(parent:T.Object3D, halo:T.Texture) {
