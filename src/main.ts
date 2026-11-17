@@ -14,6 +14,7 @@ const byId=<E extends HTMLElement=HTMLElement>(id:string)=>document.getElementBy
 const world=byId('world'), fallback=byId('fallback'), notice=byId('notice'), cue=byId('cue');
 const quality=byId<HTMLSelectElement>('quality'), sound=byId<HTMLButtonElement>('sound');
 const trouble=byId<HTMLButtonElement>('trouble'), postcard=byId<HTMLButtonElement>('postcard');
+const portraitButton=byId<HTMLButtonElement>('portrait');
 const guide=byId<HTMLDialogElement>('guide');
 const tools=['moon','stars','garden','water'] as const;
 type Tool=typeof tools[number];
@@ -32,7 +33,7 @@ function getQuality():Quality {
 function setFallback(show:boolean){
   fallback.hidden=!show;
   world.hidden=show;
-  for(const id of [...tools,'sound','quality','trouble','postcard']) {
+  for(const id of [...tools,'sound','quality','trouble','postcard','portrait']) {
     byId<HTMLButtonElement>(id).disabled=show;
   }
 }
@@ -48,10 +49,10 @@ function boot(){
     setFallback(true);
     return;
   }
-  renderer.setClearColor('#120d27');
+  renderer.setClearColor('#101927');
   renderer.outputColorSpace=T.SRGBColorSpace;
   renderer.toneMapping=T.ACESFilmicToneMapping;
-  renderer.toneMappingExposure=1.32;
+  renderer.toneMappingExposure=1.17;
   renderer.shadowMap.type=T.PCFSoftShadowMap;
   const canvas=renderer.domElement;
   canvas.tabIndex=0;
@@ -60,15 +61,15 @@ function boot(){
   world.append(canvas);
 
   const scene=new T.Scene();
-  scene.fog=new T.FogExp2('#291d41',.019);
+  scene.fog=new T.FogExp2('#202b3a',.025);
   const camera=new T.PerspectiveCamera(37,1,.1,85);
   const look=new T.Vector3(), position=new T.Vector3();
-  const hemi=new T.HemisphereLight('#d3c9f9','#84719a',2.03);
-  const rim=new T.DirectionalLight('#8bdaff',1.91);
+  const hemi=new T.HemisphereLight('#c3d4e9','#59483d',1.64);
+  const rim=new T.DirectionalLight('#8fbfc9',1.68);
   rim.position.set(-5,5,-7);
-  const fill=new T.DirectionalLight('#f1d5fa',.92);
+  const fill=new T.DirectionalLight('#d4d8f3',.80);
   fill.position.set(3,3,7);
-  const key=new T.DirectionalLight('#ffce9d',3.0);
+  const key=new T.DirectionalLight('#ffce9d',2.5);
   key.castShadow=true;
   key.shadow.mapSize.set(1024,1024);
   Object.assign(key.shadow.camera,{left:-8,right:8,top:7,bottom:-7,near:.3,far:31});
@@ -107,14 +108,17 @@ function boot(){
   const skyPlane=new T.Plane();
   const groundPlane=new T.Plane(new T.Vector3(0,1,0),-.14);
   const cameraDirection=new T.Vector3(), planePosition=new T.Vector3(), hit=new T.Vector3();
-  const moonLight=new T.Color(), colorWarm=new T.Color('#ffd19b'), colorCool=new T.Color('#a699ff');
-  const horizonWarm=new T.Color('#3a2247'), horizonCool=new T.Color('#1d3653');
+  const moonLight=new T.Color(), colorWarm=new T.Color('#ffd39e'), colorCool=new T.Color('#a5c1e0');
+  const horizonWarm=new T.Color('#4a3c41'), horizonCool=new T.Color('#264351');
   const inspectBegin=12.5, inspectEnd=16.4;
 
   let active:Tool|null=null, charge=0, moonArc=0, moonTarget=0, selectedQuality=getQuality();
   let yaw=0,yawTarget=0, pitch=0,pitchTarget=0, noticeUntil=-1;
   let time=0,previous=0,accumulator=0,animation=0,mobile=false,portrait=false,portraitBlend=0,lost=false, ready=false;
   let userInteracted=false;
+  let introAmount=media.matches?0:1;
+  let slowFrames=0, adaptiveScale=1;
+  const dogFocus=new T.Vector3().copy(dexter.root.position);
   let lastFrame=incidents.update(0,1,sky.moon.position,camera);
   const point=(x:number,y:number)=>{
     const r=canvas.getBoundingClientRect();
@@ -133,16 +137,26 @@ function boot(){
     camera.updateProjectionMatrix();
     sky.resize(camera.aspect);
     const ratio=selectedQuality==='high'?1.7:selectedQuality==='low'?.85:mobile?1.2:1.45;
-    renderer.setPixelRatio(Math.min(devicePixelRatio,ratio));
+    renderer.setPixelRatio(Math.min(devicePixelRatio,ratio)*(selectedQuality==='auto'?adaptiveScale:1));
     renderer.setSize(width,height,false);
     renderer.shadowMap.enabled=selectedQuality!=='low';
+  }
+  function setPortrait(value:boolean, showNotice=false){
+    portrait=value;
+    portraitButton.setAttribute('aria-pressed',String(value));
+    if(value){
+      active=null;
+      userInteracted=true;
+      tools.forEach(id=>byId(id).setAttribute('aria-pressed','false'));
+    }
+    if(showNotice)announce(value?'Dexter, briefly permitting a portrait.':'Back to the island.');
   }
   function setTool(tool:Tool){
     active=active===tool?null:tool;
     tools.forEach(id=>byId(id).setAttribute('aria-pressed',String(active===id)));
     if(active){
       userInteracted=true;
-      portrait=false;
+      setPortrait(false);
       const hints={moon:'Drag the moon or use the arrow keys.',stars:'Draw on the open sky, or use arrows and Enter.',garden:'Touch a plant, lantern or cottage. Enter awakens the garden.',water:'Touch the turquoise pool. Enter sends out ripples.'};
       announce(hints[active]);
     }
@@ -197,7 +211,7 @@ function boot(){
     if(surface&&(!active||active==='water')){splash(surface.point);return;}
     const plant=(!active||active==='garden')&&ray.intersectObjects([...garden.pickable,terrain.cottage.house],true)[0];
     if(plant){wake(plant.point);return;}
-    if(!active&&ray.intersectObject(dexter.root,true).length){portrait=!portrait;announce(portrait?'Dexter, briefly permitting a portrait.':'Back to the island.');return;}
+    if(!active&&ray.intersectObject(dexter.root,true).length){setPortrait(!portrait,true);return;}
     if(active==='garden'&&ray.ray.intersectPlane(groundPlane,hit)&&onIsland(hit.x,hit.z))wake(hit);
   }
   function makeTrouble(){
@@ -205,7 +219,7 @@ function boot(){
     if(!event)return;
     userInteracted=true;
     trouble.disabled=true;
-    portrait=false;
+    setPortrait(false);
     dexter.react(event.kind,time);
     audio.chime(event.kind);
     announce(event.notice,event.duration-.4);
@@ -225,11 +239,18 @@ function boot(){
     renderer.render(scene,camera);
     const unit=Math.max(12,result.width*.018);
     const vignette=context.createLinearGradient(0,result.height*.74,0,result.height);
-    vignette.addColorStop(0,'#130c2200');
-    vignette.addColorStop(1,'#130c22c4');
+    vignette.addColorStop(0,'#0c162000');
+    vignette.addColorStop(1,'#0c1620d1');
     context.fillStyle=vignette;
     context.fillRect(0,result.height*.74,result.width,result.height*.26);
-    context.fillStyle='#f8d7a4';
+    const margin=unit*1.31;
+    context.strokeStyle='#dfbe8170';
+    context.lineWidth=Math.max(1,unit*.028);
+    context.beginPath();
+    context.moveTo(margin,result.height-unit*2.12);
+    context.lineTo(margin+unit*4.25,result.height-unit*2.12);
+    context.stroke();
+    context.fillStyle='#f5d4a0';
     context.font=`italic ${unit}px Georgia`;
     context.fillText('Dexter’s Sanctum',unit*1.4,result.height-unit*1.1);
     result.toBlob(blob=>{
@@ -319,16 +340,19 @@ function boot(){
       setTool(keys[key]);
       canvas.focus();
     }else if(key==='?')guide.showModal();
-    else if(key==='d'){portrait=!portrait;active=null;userInteracted=true;tools.forEach(id=>byId(id).setAttribute('aria-pressed','false'));}
+    else if(key==='d')setPortrait(!portrait);
     else if(key==='escape'&&active)setTool(active);
-    else if(key==='escape')portrait=false;
+    else if(key==='escape')setPortrait(false);
   });
   tools.forEach(id=>byId(id).addEventListener('click',()=>setTool(id)));
   trouble.addEventListener('click',makeTrouble);
   postcard.addEventListener('click',capture);
+  portraitButton.addEventListener('click',()=>setPortrait(!portrait,true));
   quality.value=selectedQuality;
   quality.addEventListener('change',()=>{
     selectedQuality=quality.value as Quality;
+    slowFrames=0;
+    adaptiveScale=1;
     try{localStorage.setItem('dexter-quality-v1',selectedQuality);}catch{/* Storage may be unavailable. */}
     resize();
   });
@@ -349,15 +373,19 @@ function boot(){
     yaw=T.MathUtils.damp(yaw,yawTarget,media.matches?16:5.5,dt);
     pitch=T.MathUtils.damp(pitch,pitchTarget,media.matches?16:5.5,dt);
     portraitBlend=T.MathUtils.damp(portraitBlend,portrait?1:0,media.matches?16:3.2,dt);
-    const intro=userInteracted||media.matches?0:1-smooth(0,3,time);
+    const introTarget=userInteracted||media.matches?0:1-smooth(0,3,time);
+    introAmount=media.matches?0:T.MathUtils.damp(introAmount,introTarget,3.8,dt);
+    const intro=introAmount;
     const angle=portrait&&dexter.root.position.z<.90?T.MathUtils.clamp(.46+yaw,-1.42,1.42):.46+yaw;
     const height=5.83+pitch*9+intro*.50;
     const distance=16.8+intro*.7;
-    const portraitDistance=mobile?4.1:3.85;
-    look.set(0,-.08,0);
-    look.lerp(position.set(dexter.root.position.x,.88,dexter.root.position.z),portraitBlend);
+    const portraitDistance=mobile?3.8:3.65;
+    const focusSettle=portrait?1-Math.exp(-Math.max(.016,dt)*8):1;
+    dogFocus.lerp(dexter.root.position,focusSettle);
+    look.set(mobile?.15:0,-.08,0);
+    look.lerp(position.set(dogFocus.x,.89,dogFocus.z),portraitBlend);
     camera.position.set(Math.sin(angle)*distance,height,Math.cos(angle)*distance);
-    position.set(dexter.root.position.x+Math.sin(angle)*portraitDistance,2.0+pitch*4,dexter.root.position.z+Math.cos(angle)*portraitDistance);
+    position.set(dogFocus.x+Math.sin(angle)*portraitDistance,1.83+pitch*4,dogFocus.z+Math.cos(angle)*portraitDistance);
     camera.position.lerp(position,portraitBlend);
     camera.lookAt(look);
     camera.updateMatrixWorld();
@@ -366,13 +394,13 @@ function boot(){
     sky.update(camera,time,moonArc,motion,lastFrame.sneeze,mobile);
     key.position.copy(sky.moon.position);
     key.color.copy(moonLight.copy(colorWarm).lerp(colorCool,(moonArc+1)*.32));
-    key.intensity=2.5+charge*.55+lastFrame.sneeze*.75;
-    hemi.intensity=1.82+charge*.38+lastFrame.gravity*.32;
-    scene.backgroundIntensity=1+moonArc*.13+lastFrame.shower*.12;
+    key.intensity=2.35+charge*.50+lastFrame.sneeze*.49;
+    hemi.intensity=1.56+charge*.31+lastFrame.gravity*.26;
+    scene.backgroundIntensity=.96+moonArc*.08+lastFrame.shower*.08;
     scene.fog!.color.copy(horizonWarm).lerp(horizonCool,(moonArc+1)*.50);
     const moment=userInteracted?0:smooth(10,inspectBegin,time)*(1-smooth(inspectEnd,20,time));
-    water.update(time,motion,moonArc,charge+moment*.57);
-    terrain.cottage.warmLight.intensity=10+Math.sin(time*.85)*1.3+lastFrame.parade*9;
+    water.update(time,motion,moonArc,charge+moment*.57,sky.moon.position);
+    terrain.cottage.warmLight.intensity=9.6+Math.sin(time*.85)*1.1+lastFrame.parade*7;
     terrain.cottage.update(time,motion);
     garden.update(time,motion,lastFrame.parade,lastFrame.gravity);
     for(let i=0;i<dogSteps;i++)dexter.update(time,1/60,motion,lastFrame.gravity,camera.position,portrait);
@@ -387,6 +415,13 @@ function boot(){
     const elapsed=previous===0?1/60:(now-previous)/1000;
     previous=now;
     time+=elapsed;
+    if(selectedQuality==='auto'&&time>2&&adaptiveScale===1){
+      slowFrames=elapsed>.042?slowFrames+1:Math.max(0,slowFrames-2);
+      if(slowFrames>=48){
+        adaptiveScale=.82;
+        resize();
+      }
+    }
     accumulator=Math.min(6/60,accumulator+elapsed);
     const dogSteps=Math.floor(accumulator*60);
     accumulator-=dogSteps/60;
@@ -428,12 +463,15 @@ function boot(){
       const item=object as T.Mesh;
       if(item.geometry)dispose(item.geometry);
       for(const material of Array.isArray(item.material)?item.material:[item.material]){
-        if('map' in material&&material.map instanceof T.Texture)dispose(material.map);
+        for(const slot of ['map','bumpMap'] as const){
+          const map=(material as T.MeshStandardMaterial)[slot];
+          if(map instanceof T.Texture)dispose(map);
+        }
         dispose(material);
       }
       if(object instanceof T.InstancedMesh)dispose(object);
     });
-    if(scene.background instanceof T.Texture)dispose(scene.background);
+    sky.dispose();
     renderer.dispose();
   });
   window.addEventListener('pageshow',start);
@@ -442,7 +480,7 @@ function boot(){
     Object.assign(window,{sanctumProof:()=>{
       const dogCenter=dexter.root.getWorldPosition(new T.Vector3()).add(new T.Vector3(0,.80,0));
       return {time,moonArc,dog:dexter.mood,dogPosition:dogCenter.toArray(),stars:stars.length,charge,
-        incident:incidents.index,effects:lastFrame,calls:renderer.info.render.calls,memory:{...renderer.info.memory},
+        incident:incidents.index,effects:lastFrame,calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,pixelRatio:renderer.getPixelRatio(),memory:{...renderer.info.memory},
         moon:worldPoint(sky.moon.position),comet:worldPoint(incidents.comet.position),water:worldPoint(water.surfaces[0].position),
         garden:worldPoint(garden.lamps[2].lamp.getWorldPosition(new T.Vector3())),dexter:worldPoint(dogCenter)};
     }});

@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#100e24">
+  <meta name="theme-color" content="#111924">
   <meta name="description" content="A miniature universe under the questionable management of Dexter the Furious Little Stinkweasel.">
   <link rel="icon" href="/isle.png">
+  <link rel="preload" as="image" href="/src/assets/lantern-isle-sky.webp">
   <title>Dexter’s Sanctum</title>
 </head>
 <body>
@@ -32,7 +33,8 @@
         <button id="trouble" type="button">✴ <span>Make trouble</span></button>
       </nav>
       <div class="utilities">
-        <button id="postcard" type="button">▧ <span>Postcard</span></button>
+        <button id="portrait" type="button" aria-pressed="false" aria-label="Dexter portrait" title="Dexter portrait (D)">◈ <span>Dexter</span></button>
+        <button id="postcard" type="button" aria-label="Save postcard" title="Save postcard">▧ <span>Postcard</span></button>
         <button id="help" type="button" aria-label="How to explore" title="How to explore">?</button>
       </div>
     </footer>

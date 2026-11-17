@@ -100,6 +100,11 @@ test('desktop island, pointer and keyboard tools, postcard, sound, and every inc
   expect(after.memory.geometries-memory.geometries).toBeLessThan(10);
   expect(after.memory.textures-memory.textures).toBeLessThan(4);
   expect(after.dogPosition).not.toEqual(before.dogPosition);
+  await page.locator('#portrait').click();
+  await expect(page.locator('#portrait')).toHaveAttribute('aria-pressed','true');
+  await expect.poll(()=>proof(page).then(s=>s.dog)).toBe('portrait');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#portrait')).toHaveAttribute('aria-pressed','false');
   expect(errors).toEqual([]);
 });
 
@@ -117,6 +122,12 @@ test('mobile touch and reduced motion',async ({browser},run)=>{
   await page.touchscreen.tap(173,159);
   await expect.poll(()=>proof(page).then(s=>s.stars)).toBeGreaterThan(0);
   await expect(page.locator('#postcard')).toBeInViewport();
+  await page.locator('#portrait').tap();
+  await expect(page.locator('#portrait')).toHaveAttribute('aria-pressed','true');
+  await expect.poll(()=>proof(page).then(s=>s.dog)).toBe('portrait');
+  await page.screenshot({path:run.outputPath('portrait-mobile.png')});
+  await page.locator('#portrait').tap();
+  await expect(page.locator('#portrait')).toHaveAttribute('aria-pressed','false');
   expect(errors).toEqual([]);
   await page.close();
 });

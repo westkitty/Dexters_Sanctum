@@ -1,27 +1,39 @@
 import * as T from 'three';
 import { blob, glow, ground, group, matte, mesh, randomFrom, TAU } from './model';
-import { sprite } from './sky';
+import { halo, sprite } from './sky';
 import { incidentFrame, incidents } from './timeline';
 
 export function makeIncidents(scene:T.Scene,amber:T.Texture,blue:T.Texture) {
   const root=group(scene);
-  const rain=group(root), comet=group(root), floated=group(root);
+  const comet=group(root), floated=group(root);
   const rand=randomFrom(71252);
-  const sparks=Array.from({length:75},(_,i)=>{
-    const light=sprite(rain,i%4?amber:blue,.09+rand()*.19,.9);
-    return {light,offset:rand()*4.7,x:rand(),z:rand(),speed:.85+rand()*1.25};
+  const sparkCount=75;
+  const sparkPositions=new Float32Array(sparkCount*3);
+  const sparkColors=new Float32Array(sparkCount*3);
+  const showerGeometry=new T.BufferGeometry();
+  showerGeometry.setAttribute('position',new T.BufferAttribute(sparkPositions,3).setUsage(T.DynamicDrawUsage));
+  showerGeometry.setAttribute('color',new T.BufferAttribute(sparkColors,3).setUsage(T.DynamicDrawUsage));
+  const showerMaterial=new T.PointsMaterial({
+    color:'#ffffff',map:halo('#ffffff'),vertexColors:true,size:.32,transparent:true,
+    blending:T.AdditiveBlending,depthWrite:false,toneMapped:false,
   });
+  const rain=new T.Points(showerGeometry,showerMaterial);
+  rain.frustumCulled=false;
+  root.add(rain);
+  const sparks=Array.from({length:sparkCount},(_,i)=>({
+    offset:rand()*4.7,x:rand(),z:rand(),speed:.85+rand()*1.25,tint:new T.Color(i%4?'#f4b962':'#84eddf'),
+  }));
   const cometBody=blob(comet,glow('#ffce8d',2.6),[0,0,0],[.53,.27,.28],false);
   cometBody.rotation.z=-.19;
-  sprite(comet,amber,4,.81);
+  sprite(comet,amber,3,.71);
   const eyes=new T.MeshBasicMaterial({color:'#74344f'});
   blob(comet,eyes,[-.17,.06,.257],[.028,.06,.016],false);
   blob(comet,eyes,[.028,.04,.285],[.029,.061,.016],false);
   blob(comet,eyes,[-.09,-.066,.274],[.092,.016,.014],false);
   for(let i=0;i<14;i++){
-    const tail=sprite(comet,i<5?amber:blue,1,.63-i*.029);
-    tail.position.set(i*.39+.3,i*.077,-.10);
-    tail.scale.set(1.6+i*.13,.39+i*.078,1);
+    const tail=sprite(comet,i<7?amber:blue,1,.52-i*.024);
+    tail.position.set(i*.34+.3,i*.035+Math.sin(i*.34)*.12,-.10);
+    tail.scale.set(1.54+i*.13,.29+i*.042,1);
     tail.center.set(.2,.5);
   }
   const stones=Array.from({length:17},(_,i)=>{
@@ -46,13 +58,21 @@ export function makeIncidents(scene:T.Scene,amber:T.Texture,blue:T.Texture) {
       const frame=incidentFrame(current,age);
       rain.visible=frame.shower>0;
       if(rain.visible){
-        sparks.forEach(({light,offset,x,z,speed})=>{
-          const fall=(age-1.05-offset*.21)*speed;
-          light.visible=fall>=0&&fall<9;
-          light.position.set(moon.x+(x-.72)*fall*2,moon.y-fall*1.35,moon.z+fall*(.49+z*1.1));
-          light.material.opacity=frame.shower*(.4+.53*z);
-          light.scale.y=light.scale.x*(1+motion*.8);
+        showerMaterial.opacity=frame.shower*.88;
+        sparks.forEach(({offset,x,z,speed,tint},i)=>{
+          const fall=(age-1.02-offset*.065)*speed;
+          const slot=i*3;
+          const visible=fall>=0&&fall<9;
+          const alpha=visible?(.83+.41*z)*Math.min(1,fall*5.1)*Math.min(1,(9-fall)*.9):0;
+          sparkPositions[slot]=moon.x-.86-fall*(.67+x*2.62);
+          sparkPositions[slot+1]=moon.y+.26-fall*(.22+z*.94)+Math.sin(z*8+fall*2)*.17*motion;
+          sparkPositions[slot+2]=moon.z+1.48+fall*(.21+z*.75);
+          sparkColors[slot]=tint.r*alpha;
+          sparkColors[slot+1]=tint.g*alpha;
+          sparkColors[slot+2]=tint.b*alpha;
         });
+        showerGeometry.attributes.position.needsUpdate=true;
+        showerGeometry.attributes.color.needsUpdate=true;
       }
       comet.visible=frame.comet>0;
       if(comet.visible){

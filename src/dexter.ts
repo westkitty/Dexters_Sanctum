@@ -254,6 +254,7 @@ export function makeDexter(scene:T.Scene) {
   ];
   let target=0,wait=.5,walk=0,sit=0,lay=0,angle=.70,phase=0,reactAt=-40,retreat=0;
   let reaction='suspicious';
+  let alert=0,snuffle=0,lookAside=0,turnLean=0,tailBeat=0;
   let portraitYaw:number|undefined;
   let mood='emerging';
   const query=new T.Vector3();
@@ -289,7 +290,8 @@ export function makeDexter(scene:T.Scene) {
         mood=target===0?'emerging':'patrol';
         wanted=1;
         wantedAngle=Math.atan2(dx,dz);
-        const step=Math.min(distance,dt*(time<8?.79:.67));
+        const pace=(.35+.65*walk)*(time<8?.79:.67);
+        const step=Math.min(distance,dt*pace*T.MathUtils.smoothstep(distance,.0,.32)*.64+dt*pace*.36);
         root.position.x+=dx/distance*step;
         root.position.z+=dz/distance*step;
         wait=pause;
@@ -303,6 +305,7 @@ export function makeDexter(scene:T.Scene) {
       }
       const delta=Math.atan2(Math.sin(wantedAngle-angle),Math.cos(wantedAngle-angle));
       angle+=delta*Math.min(1,dt*(portrait?6:4.5));
+      turnLean=T.MathUtils.damp(turnLean,T.MathUtils.clamp(delta,-.8,.8)*walk,6,dt);
       root.rotation.y=angle;
       root.position.y=ground(root.position.x,root.position.z)+lift*1.24;
       contact.position.y=.022-lift*1.24;
@@ -311,30 +314,35 @@ export function makeDexter(scene:T.Scene) {
       walk=T.MathUtils.lerp(walk,wanted,follow);
       sit=T.MathUtils.lerp(sit,wantedSit,follow*.60);
       lay=T.MathUtils.lerp(lay,wantedLay,follow*.60);
-      phase+=dt*(7.4+walk*1.2);
+      phase+=dt*(4.8+walk*4.1);
       const breath=Math.sin(time*3.5)*.013*motion;
       trunk.position.set(0,.575+breath+Math.sin(phase*2)*walk*.025-sit*.12-lay*.30,0);
       trunk.rotation.x=-sit*.27+lay*.08;
-      const sniff=mood==='sniffing'?.19+Math.sin(time*8)*.10:0;
+      trunk.rotation.z=turnLean*.064;
+      snuffle=T.MathUtils.damp(snuffle,mood==='sniffing'?1:0,8.0,dt);
+      lookAside=T.MathUtils.damp(lookAside,mood==='side-eye'?-.30:0,6.0,dt);
+      const sniff=snuffle*(.19+Math.sin(time*8)*.066);
       const surprise=reactionAge<1.12&&['sneeze','comet','moon'].includes(reaction);
+      alert=T.MathUtils.damp(alert,surprise?1:0,surprise?14:5,dt);
       head.position.y=1.063+breath-sit*.06-lay*.68-sniff*.19;
       head.position.z=.49+lay*.24;
-      head.rotation.x=sniff+lay*.14-(surprise?.19:0)+Math.sin(phase)*walk*.042;
-      head.rotation.y=(mood==='side-eye'?-.30:0)+Math.sin(time*1.24)*(.13-walk*.08)*motion;
-      head.rotation.z=(mood==='serene'?.08:0)+(surprise?-.07:0);
+      head.rotation.x=sniff+lay*.14-alert*.19+Math.sin(phase)*walk*.042;
+      head.rotation.y=lookAside-turnLean*.115+Math.sin(time*1.24)*(.13-walk*.08)*motion;
+      head.rotation.z=(mood==='serene'?.08:0)-alert*.07;
       const blink=Math.max(0,Math.sin(time*1.12+.83))**53;
       const grin=mood==='serene'||(reaction==='garden'&&reactionAge<1.45);
       mouth.visible=grin||surprise;
       mouth.scale.y=grin?1:.84;
       eyes.forEach((eye,i)=>{
-        eye.scale.y=Math.max(.08,(surprise?1.19:1)-blink*.86-lay*.82);
-        brows[i].position.y=surprise?.026:0;
-        brows[i].position.z=surprise?.014:0;
-        ears[i].rotation.z=(i?1:-1)*(Math.sin(phase+.4)*.073*walk+(surprise?.10:0));
+        eye.scale.y=Math.max(.08,(1+alert*.19)-blink*.86-lay*.82);
+        brows[i].position.y=alert*.026;
+        brows[i].position.z=alert*.014;
+        ears[i].rotation.z=(i?1:-1)*(Math.sin(phase+.4)*.073*walk+alert*.10)-turnLean*.08;
         ears[i].rotation.x=Math.sin(phase-.37)*walk*.11+lay*.16;
       });
       tail.position.y=.64-sit*.24-lay*.30;
-      tail.rotation.y=Math.sin(time*(grin?6:3.4))*motion*(grin?.49:.23);
+      tailBeat+=dt*(grin?5.8:3.4);
+      tail.rotation.y=Math.sin(tailBeat)*motion*(grin?.43:.23)-turnLean*.21;
       tail.rotation.x=-sit*.29+lay*.39+Math.sin(time*4.2)*.08*motion;
       legs.forEach((leg,i)=>{
         query.set(leg.side*.30,0,leg.front?.4:-.49).applyAxisAngle(T.Object3D.DEFAULT_UP,angle).add(root.position);

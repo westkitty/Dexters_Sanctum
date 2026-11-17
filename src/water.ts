@@ -6,26 +6,47 @@ export function makeWater(scene:T.Scene, aura:T.Texture) {
   const root=group(scene);
   const poolMat=new T.ShaderMaterial({
     uniforms:{
-      clock:{value:0}, reflection:{value:0}, sparkle:{value:0}, palette:{value:new T.Color('#a8ffee')},
+      clock:{value:0}, reflection:{value:0}, sparkle:{value:0}, moonWorld:{value:new T.Vector3()},
+      pulse:{value:new T.Vector3(2.7,.89,9)},
     },
     vertexShader:`
       varying vec2 vUv;
-      void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}
+      varying vec3 worldPoint;
+      void main(){
+        vUv=uv;
+        worldPoint=(modelMatrix*vec4(position,1.0)).xyz;
+        gl_Position=projectionMatrix*viewMatrix*vec4(worldPoint,1.0);
+      }
     `,
     fragmentShader:`
       varying vec2 vUv;
+      varying vec3 worldPoint;
       uniform float clock,reflection,sparkle;
-      uniform vec3 palette;
+      uniform vec3 moonWorld,pulse;
       void main(){
         vec2 p=vUv*2.-1.;
-        float r=length(p);
-        float waves=sin(p.y*47.+sin(p.x*9.+clock)*1.6-clock*2.)*.5+.5;
-        float threads=pow(waves,12.)*(.45+.55*sin(p.x*31.+clock+p.y*19.));
-        float trail=exp(-pow((p.x-reflection*.6-p.y*.25)*3.8,2.))*.45;
-        vec3 c=mix(vec3(.036,.19,.26),vec3(.14,.56,.54),.38+.3*sin(p.x*4.+p.y*6.));
-        c+=vec3(.10,.35,.35)*(threads*.74+smoothstep(.81,1.,r)*.47);
-        c+=palette*trail*(.27+threads*.5)+sparkle*.10;
-        gl_FragColor=vec4(c,1.);
+        float flow=sin(p.y*21.+p.x*7.+sin(p.x*7.+clock*.72)*1.42-clock*1.7);
+        float crossFlow=cos(p.x*19.-p.y*24.+clock*1.2+1.4*sin(p.y*8.-clock*.5));
+        float tiny=cos(p.x*111.+p.y*49.-clock*2.);
+        float shore=smoothstep(.70,1.0,length(vec2(p.x,p.y*1.10)));
+        vec3 surfaceNormal=normalize(vec3(.055*crossFlow+.016*tiny,1.,.073*flow));
+        vec3 eye=normalize(cameraPosition-worldPoint);
+        vec3 moon=normalize(moonWorld-worldPoint);
+        float fresnel=pow(1.-clamp(dot(surfaceNormal,eye),0.,1.),3.);
+        float moonlight=pow(max(0.,dot(reflect(-moon,surfaceNormal),eye)),43.);
+        float grain=pow(clamp(.47+.26*flow+.25*crossFlow,0.,1.),7.);
+        float banks=sin(p.x*5.1+p.y*3.0)+.6*cos(p.y*7.+p.x*2.);
+        float ring=length(worldPoint.xz-pulse.xy)-pulse.z*.51;
+        float touch=exp(-abs(ring)*77.)*clamp(1.-pulse.z*.59,0.,1.);
+        float moonTrail=exp(-pow((p.x-reflection*.63+p.y*.28)*4.2,2.));
+        vec3 water=mix(vec3(.019,.107,.139),vec3(.064,.234,.198),.38+banks*.13+shore*.19);
+        water=mix(water,vec3(.051,.127,.174),fresnel*.61);
+        water+=vec3(.15,.38,.31)*grain*(.61+shore*.43);
+        water+=vec3(.48,.47,.27)*moonlight*.91;
+        water+=vec3(.18,.31,.23)*moonTrail*(grain+.11)*.53;
+        water+=vec3(.18,.55,.48)*(touch*.61 + sparkle*.25);
+        gl_FragColor=vec4(water,1.);
+        #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }
     `,
@@ -55,11 +76,12 @@ export function makeWater(scene:T.Scene, aura:T.Texture) {
       varying vec2 vUv;
       uniform float clock;
       void main(){
-        float thread=.5+.5*sin(vUv.x*79.+sin(vUv.y*6.-clock*1.9)*2.+sin(vUv.x*21.));
-        float streaming=.52+.46*sin(vUv.y*54.-clock*7.+vUv.x*24.);
+        float thread=.5+.5*sin(vUv.x*64.+sin(vUv.y*5.-clock*1.32)*1.99+sin(vUv.x*21.));
+        float streaming=.52+.46*sin(vUv.y*49.-clock*6.4+sin(vUv.x*34.)*4.);
         float edges=smoothstep(0.,.14,vUv.x)*(1.-smoothstep(.86,1.,vUv.x));
         float veil=edges*(1.-smoothstep(.72,1.,vUv.y));
-        gl_FragColor=vec4(.21+thread*.38,.70+thread*.22,.82+thread*.18,veil*(.27+streaming*thread*.60));
+        float center=sin(3.14159265*vUv.x);
+        gl_FragColor=vec4(.17+thread*.34,.62+thread*.29,.63+thread*.25,veil*(.13+streaming*thread*.51+center*.14));
       }
     `,
   });
@@ -86,7 +108,7 @@ export function makeWater(scene:T.Scene, aura:T.Texture) {
     ring.visible=false;
     return {ring,material,birth:-30};
   });
-  const fishMat=new T.MeshBasicMaterial({color:'#e4a78f',toneMapped:false});
+  const fishMat=new T.MeshBasicMaterial({color:'#9e9274',toneMapped:false});
   const fish=Array.from({length:6},()=>blob(root,fishMat,[0,.329,0],[.073,.008,.022],false));
   const rand=randomFrom(541);
   const bubbleGeo=new T.BufferGeometry();
@@ -96,6 +118,14 @@ export function makeWater(scene:T.Scene, aura:T.Texture) {
   bubbles.frustumCulled=false;
   root.add(bubbles);
   const bubblePhases=Array.from({length:54},()=>[rand(),rand(),rand()]);
+  const droplets = new T.BufferGeometry();
+  const dropletsArray = new Float32Array(12 * 3);
+  droplets.setAttribute('position',new T.BufferAttribute(dropletsArray,3));
+  const spray = new T.Points(droplets,new T.PointsMaterial({
+    color:'#adf8e2',size:.059,transparent:true,depthWrite:false,blending:T.AdditiveBlending,
+  }));
+  spray.frustumCulled=false;
+  root.add(spray);
   let last=-20, index=0,reactionX=2.7,reactionZ=.89;
   return {surfaces:[pool],ripple(position:T.Vector3,time:number){
     reactionX=position.x;reactionZ=position.z;
@@ -105,10 +135,28 @@ export function makeWater(scene:T.Scene, aura:T.Texture) {
       entry.ring.position.set(position.x,Math.max(.347,ground(position.x,position.z)+.025),position.z);
     }
     last=time;
-  },update(time:number,motion:number,arc:number,charged:number){
+  },update(time:number,motion:number,arc:number,charged:number,moon:T.Vector3){
     poolMat.uniforms.clock.value=time*motion;
     poolMat.uniforms.reflection.value=arc;
     poolMat.uniforms.sparkle.value=charged;
+    poolMat.uniforms.moonWorld.value.copy(moon);
+    const touchAge=time-last;
+    poolMat.uniforms.pulse.value.set(reactionX,reactionZ,touchAge);
+    spray.visible=touchAge<.89;
+    if(spray.visible){
+      spray.material.opacity=Math.max(0,1-touchAge/.89)*.82;
+      for(let i=0;i<12;i++){
+        const angle=i*2.399;
+        const t=touchAge*(.99+i%4*.28);
+        const flight=Math.max(0, .95*t - .95*t*t);
+        const offset=t*(.32+i%3*.070);
+        const start=i*3;
+        dropletsArray[start]=reactionX+Math.cos(angle)*offset;
+        dropletsArray[start+1]=.339+flight*motion;
+        dropletsArray[start+2]=reactionZ+Math.sin(angle)*offset;
+      }
+      droplets.attributes.position.needsUpdate=true;
+    }
     rings.forEach(({ring,material,birth})=>{
       const age=time-birth;
       ring.visible=age>=0&&age<1.65;
@@ -132,7 +180,9 @@ export function makeWater(scene:T.Scene, aura:T.Texture) {
     });
     bubblePhases.forEach(([a,b,c],i)=>{
       const life=(a+time*(.15+b*.11)*motion)%1;
-      bubblePositions.set([4.1+(b-.5)*.82+life*.72,.30-life*life*4.18,2.61+life*(.76+c*.41)],i*3);
+      bubblePositions[i*3]=4.1+(b-.5)*.82+life*.72;
+      bubblePositions[i*3+1]=.30-life*life*4.18;
+      bubblePositions[i*3+2]=2.61+life*(.76+c*.41);
     });
     bubbleGeo.attributes.position.needsUpdate=true;
   }};
