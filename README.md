@@ -1,0 +1,27 @@
+# Dexter's Sanctum
+
+**A living miniature universe. Questionable management.**
+
+This repository is the home of **The Unreasonable Little Universe**, a cinematic, interactive, static browser experience starring **Dexter the Furious Little Stinkweasel**.
+
+The finished app is a beautiful, explorable floating island: luminous water, a waterfall into the stars, a warm cottage, flowers and lanterns, an enormous draggable moon, editable constellations, environmental reactions, and four animated cosmic mishaps. Dexter autonomously patrols and judges the entire operation.
+
+## Build instructions for Codex
+
+1. Read [AGENTS.md](AGENTS.md) and [CODEX_TASK.md](CODEX_TASK.md) in full.
+2. Follow [docs/DEXTER_VISUAL_CONTRACT.md](docs/DEXTER_VISUAL_CONTRACT.md) and the committed visual reference under `public/references/`; **this is Dexter, not a generic pet**.
+3. Implement and test the complete production-ready app, not a mockup.
+4. Stage, commit, and push the finished app to `westkitty/Dexters_Sanctum` on `main` after all checks pass.
+5. Verify that GitHub Pages builds and deploys, and report the live URL and deployment evidence.
+
+This repo is intentionally static-host friendly. The app should run locally with `npm ci && npm run dev` and build with `npm run build`. The Pages workflow deploys `dist/` when application files are pushed to `main`.
+
+## Important boundaries
+
+- Preserve the supplied artwork's identity and detailed markings.
+- Do not add accounts, backends, telemetry, streaks, therapy dashboards, or engagement-pressure mechanics.
+- Keep optional audio muted until the user enables it.
+- No spiders or spider-like creatures.
+- Do not claim a successful deploy, responsive proof, or exact character fidelity without testing.
+
+See the detailed spec for all interaction and acceptance criteria.
