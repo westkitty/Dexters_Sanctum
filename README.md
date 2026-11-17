@@ -9,7 +9,7 @@ The finished app is a beautiful, explorable floating island: luminous water, a w
 ## Build instructions for Codex
 
 1. Read [AGENTS.md](AGENTS.md) and [CODEX_TASK.md](CODEX_TASK.md) in full.
-2. Follow [docs/DEXTER_VISUAL_CONTRACT.md](docs/DEXTER_VISUAL_CONTRACT.md) and the committed visual reference under `public/references/`; **this is Dexter, not a generic pet**.
+2. Follow [docs/DEXTER_VISUAL_CONTRACT.md](docs/DEXTER_VISUAL_CONTRACT.md) and the reference image handoff described in `public/references/README.md`; **this is Dexter, not a generic pet**.
 3. Implement and test the complete production-ready app, not a mockup.
 4. Stage, commit, and push the finished app to `westkitty/Dexters_Sanctum` on `main` after all checks pass.
 5. Verify that GitHub Pages builds and deploys, and report the live URL and deployment evidence.
