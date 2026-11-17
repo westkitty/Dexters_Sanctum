@@ -1,0 +1,54 @@
+:root{color-scheme:dark;font-family:system-ui,sans-serif;color:#f9edda;background:#100e24;font-synthesis:none;--gold:#eabf81;--glass:#130f24df}
+*{box-sizing:border-box}
+body{margin:0}
+button,select{font:inherit;color:inherit}
+button,select{cursor:pointer}
+button:focus-visible,select:focus-visible,canvas:focus-visible{outline:2px solid #92efe2;outline-offset:4px}
+button:disabled{cursor:wait;opacity:.65}
+#sanctum,#world{position:absolute;inset:0;overflow:hidden}
+#world canvas{display:block;width:100%;height:100%;touch-action:none}
+#sanctum:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,#0a071a75,transparent 28%,transparent 73%,#0a071abb);pointer-events:none}
+.masthead,.top-actions,.controls,#notice,#cue,#fallback{position:absolute;z-index:1}
+.masthead{top:clamp(22px,5vh,55px);left:clamp(20px,4.1vw,68px);pointer-events:none;text-shadow:0 2px 20px #090715}
+.edition,.coordinates{font-size:10px;letter-spacing:.23em;font-weight:700;color:#f3ca94;display:flex;align-items:center;gap:9px}
+.edition span,.coordinates span{font-size:17px;line-height:1;color:#efbd77}
+h1{font-family:Georgia,serif;font-weight:400;letter-spacing:-.065em;line-height:.95;font-size:clamp(47px,6.1vw,94px);margin:13px 0 10px}
+h1 i{color:#f3c689;font-weight:400}
+.masthead p{font-size:12px;letter-spacing:.045em;color:#dfd2e0;margin:0}
+.top-actions{bottom:77px;right:clamp(15px,3.4vw,60px);display:flex;gap:7px;font-size:12px}
+button,select{border:1px solid #d9b88a44;border-radius:8px;background:var(--glass);padding:9px 12px}
+button:hover,select:hover{border-color:#eabf81aa;background:#32243b}
+.controls{bottom:max(20px,env(safe-area-inset-bottom));left:clamp(15px,3.4vw,60px);right:clamp(15px,3.4vw,60px);display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;font-size:12px}
+.controls nav,.utilities{display:flex;gap:4px;align-items:center}
+.controls nav{border:1px solid #ddc5a34d;padding:5px;background:#120f22e8;border-radius:13px;box-shadow:0 10px 45px #0008;backdrop-filter:blur(12px)}
+.controls nav button{border-color:transparent;background:transparent;min-height:40px;white-space:nowrap}
+.controls nav button:hover,.controls nav button[aria-pressed=true]{border-color:#c0f5d66b;background:#214040;color:#d5fff2}
+#trouble{background:#ebbe80;color:#231427;font-weight:750;margin-left:5px}
+#trouble:hover{background:#ffe1a8}
+.utilities{justify-self:end}
+#help{font-weight:700}
+#notice,#cue{left:50%;transform:translateX(-50%);bottom:83px;margin:0;text-align:center;max-width:80vw;width:max-content;pointer-events:none}
+#notice:not(:empty),#cue:not(:empty){padding:9px 15px;border-radius:8px;background:#140f29eb;border:1px solid #ecbe7759;box-shadow:0 10px 25px #0005}
+#notice{color:#ffdfad;font:italic 17px Georgia,serif}
+#cue{color:#ead9e9;font-size:12px}
+#notice:not(:empty){z-index:2}
+#guide{width:min(430px,90vw);border:1px solid #e6be7f75;border-radius:15px;background:#1b152b;color:#f8ecda;padding:25px;box-shadow:0 15px 80px #000b}
+#guide::backdrop{background:#090615ad}
+h2{font:30px Georgia,serif;margin:0 0 12px}
+#guide p,#fallback p{font-size:14px;line-height:1.55;color:#e3d2e5}
+#fallback{top:49%;left:50%;transform:translate(-50%,-50%);width:min(400px,88vw);text-align:center;padding:24px;border:1px solid #dfb98566;border-radius:15px;background:#17112a}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+@media(max-width:680px){
+  .masthead{top:24px}
+  .top-actions{top:auto;bottom:79px;right:15px;font-size:11px}
+  .controls{grid-template-columns:1fr auto;gap:5px}
+  .coordinates{display:none}
+  .controls nav{justify-content:space-around;gap:1px;padding:3px}
+  .controls nav button{font-size:14px;padding:4px 5px;min-height:40px;display:flex;flex-direction:column;justify-content:center;align-items:center;line-height:1.1}
+  .controls nav button span{font-size:9px}
+  #trouble{margin-left:0;padding-inline:5px}
+  .utilities button{font-size:13px;padding:8px;min-height:42px}
+  .utilities span{display:none}
+  #notice,#cue{bottom:127px}
+}
+@media(max-height:530px) and (min-width:681px){h1{font-size:48px}.masthead p,.coordinates{display:none}}

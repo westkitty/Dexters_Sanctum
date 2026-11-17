@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#100e24">
+  <meta name="description" content="A miniature universe under the questionable management of Dexter the Furious Little Stinkweasel.">
+  <link rel="icon" href="/isle.png">
+  <title>Dexter’s Sanctum</title>
+</head>
+<body>
+  <main id="sanctum" aria-label="Dexter’s interactive miniature universe">
+    <div id="world"></div>
+    <header class="masthead">
+      <div class="edition"><span aria-hidden="true">✦</span> THE UNREASONABLE LITTLE UNIVERSE</div>
+      <h1>Dexter’s <i>Sanctum</i></h1>
+      <p>A small world under questionable management.</p>
+    </header>
+    <div class="top-actions" aria-label="World settings">
+      <button id="sound" type="button" aria-pressed="false">♪ <span>Sound off</span></button>
+      <label class="quality"><span class="sr-only">Rendering quality</span><select id="quality"><option value="auto">Quality · Auto</option><option value="high">Quality · High</option><option value="low">Quality · Low</option></select></label>
+    </div>
+    <p id="cue" aria-hidden="true"></p>
+    <p id="notice" role="status" aria-live="polite"></p>
+    <footer class="controls">
+      <div class="coordinates" aria-hidden="true"><span>✧</span> THE LANTERN ISLE</div>
+      <nav aria-label="World interactions">
+        <button id="moon" type="button" aria-pressed="false" title="Move the moon (M)">☾ <span>Moon</span></button>
+        <button id="stars" type="button" aria-pressed="false" title="Paint stars (S)">✧ <span>Stars</span></button>
+        <button id="garden" type="button" aria-pressed="false" title="Awaken the garden (G)">✿ <span>Garden</span></button>
+        <button id="water" type="button" aria-pressed="false" title="Touch the water (W)">≋ <span>Water</span></button>
+        <button id="trouble" type="button">✴ <span>Make trouble</span></button>
+      </nav>
+      <div class="utilities">
+        <button id="postcard" type="button">▧ <span>Postcard</span></button>
+        <button id="help" type="button" aria-label="How to explore" title="How to explore">?</button>
+      </div>
+    </footer>
+    <dialog id="guide">
+      <form method="dialog">
+        <h2>A visitor’s guide</h2>
+        <p>Drag the moon along its arc. Pick Stars and draw across the open sky. Touch the garden, lanterns, cottage or water to see what stirs. Drag elsewhere to look around. Click Dexter or press D for a closer look.</p>
+        <p>For keyboard play, choose a tool, then focus the scene. Arrow keys move the moon or star cursor. Enter plants a star, awakens the garden or touches the pool.</p>
+        <p>Dexter manages his own schedule. Making trouble is entirely optional.</p>
+        <button autofocus>Back to the island</button>
+      </form>
+    </dialog>
+    <section id="fallback" hidden><h2>The island is out of view</h2><p>This scene needs WebGL. Enable hardware acceleration or open it in a browser with WebGL support.</p><button id="retry">Try again</button></section>
+  </main>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

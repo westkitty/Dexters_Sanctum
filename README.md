@@ -25,3 +25,9 @@ This repo is intentionally static-host friendly. The app should run locally with
 - Do not claim a successful deploy, responsive proof, or exact character fidelity without testing.
 
 See the detailed spec for all interaction and acceptance criteria.
+
+## Local development and browser checks
+
+Use Node 22.12 or later. Run `npm ci`, then `npm run dev` and open the repository subpath shown by Vite. `npm test` checks incident timing and `npm run build` type-checks and builds the version served by Pages. For browser checks, run `npx playwright install chromium` and then `npm run test:browser`. Set `CHROMIUM_PATH` to use a system Chromium instead.
+
+Drag the moon directly or choose a tool in the bottom bar. Press D for a Dexter portrait and drag to change the angle. Sound starts off each time. The postcard button exports the current camera view as a PNG.
