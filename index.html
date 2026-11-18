@@ -47,14 +47,14 @@
         <h2>A visitor’s guide</h2>
         <p>Drag the moon along its arc. Pick Stars and draw across the open sky. Touch the garden, lanterns, cottage or water to see what stirs. Drag elsewhere to look around. Click Dexter or press D for a closer look.</p>
         <p>For keyboard play, choose a tool, then focus the scene. Arrow keys move the moon or star cursor. Enter plants a star, awakens the garden or touches the pool. Backspace removes the last star.</p>
-        <p>Dexter manages his own schedule. Making trouble is entirely optional.</p>
+        <p>Postcard saves an image you can reopen. Choose Link to copy a living view or open a saved PNG. Dexter manages his own schedule.</p>
         <button autofocus>Back to the island</button>
       </form>
     </dialog>
     <dialog id="postcard-link" aria-labelledby="postcard-link-title">
       <form method="dialog">
         <h2 id="postcard-link-title">A living postcard</h2>
-        <p>Open this link to revisit your moon, island view, and constellation. Dexter will be going about his night.</p>
+        <p>Keep the moon, island view, and constellation. Dexter will be going about his night when you return.</p>
         <label class="sr-only" for="postcard-address">Postcard link</label>
         <input id="postcard-address" type="url" readonly spellcheck="false">
         <div class="postcard-actions">
@@ -62,6 +62,17 @@
           <button>Close</button>
         </div>
         <p id="postcard-copy-status" role="status" aria-live="polite"></p>
+        <section class="postcard-file" aria-labelledby="postcard-file-title">
+          <h3 id="postcard-file-title">Revisit a saved postcard</h3>
+          <input id="postcard-file" type="file" accept="image/png,.png" aria-label="Postcard PNG" hidden>
+          <div class="postcard-actions">
+            <button id="choose-postcard" type="button">Choose PNG</button>
+            <button id="open-postcard" type="button" hidden>Open view</button>
+            <button id="return-postcard-view" type="button" hidden>Return to previous view</button>
+          </div>
+          <img id="postcard-preview" alt="Preview of the saved postcard" hidden>
+          <p id="postcard-file-status" role="status" aria-live="polite"></p>
+        </section>
       </form>
     </dialog>
     <section id="fallback" hidden><h2>The island is out of view</h2><p>This scene needs WebGL. Enable hardware acceleration or open it in a browser with WebGL support.</p><button id="retry">Try again</button></section>

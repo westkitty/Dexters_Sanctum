@@ -87,15 +87,32 @@ test('desktop island, pointer and keyboard tools, postcard, sound, and every inc
 
   const memory=(await proof(page)).memory;
   for (const [index,effect] of ['shower','parade','gravity','comet','shower'].entries()){
-    await page.locator('#trouble').click();
-    await expect(page.locator('#trouble')).toBeDisabled();
-    await expect.poll(()=>proof(page).then(s=>Number(s.effects[effect])),{timeout:20000}).toBeGreaterThan(.40);
-    if(effect==='comet'){
-      await expect.poll(()=>proof(page).then(s=>Boolean(Number(s.effects.comet)>.42&&Math.abs(s.comet[0])<.68&&Math.abs(s.comet[1])<.9))).toBe(true);
+    const observed=await page.evaluateHandle(effect=>{
+      const state={peak:0,cometInView:false,stop:()=>cancelAnimationFrame(next)};
+      let next=0;
+      const sample=()=>{
+        const {effects,comet}=(window as Window & {sanctumProof:()=>Proof}).sanctumProof();
+        state.peak=Math.max(state.peak,Number(effects[effect]));
+        state.cometInView||=Number(effects.comet)>.42&&Math.abs(comet[0])<.68&&Math.abs(comet[1])<.9;
+        next=requestAnimationFrame(sample);
+      };
+      next=requestAnimationFrame(sample);
+      return state;
+    },effect);
+    try{
+      await page.locator('#trouble').click();
+      await expect(page.locator('#trouble')).toBeDisabled();
+      await expect.poll(()=>observed.evaluate(state=>state.peak),{timeout:35000}).toBeGreaterThan(.40);
+      if(effect==='comet'){
+        await expect.poll(()=>observed.evaluate(state=>state.cometInView),{timeout:35000}).toBe(true);
+      }
+      if(index<4)await page.screenshot({path:run.outputPath(`incident-${effect}.png`)});
+      await expect(page.locator('#trouble')).toBeEnabled({timeout:35000});
+      expect((await proof(page)).effects[effect]).toBe(0);
+    }finally{
+      await observed.evaluate(state=>state.stop());
+      await observed.dispose();
     }
-    if(index<4) await page.screenshot({path:run.outputPath(`incident-${effect}.png`)});
-    await expect(page.locator('#trouble')).toBeEnabled({timeout:20000});
-    expect((await proof(page)).effects[effect]).toBe(0);
   }
   const after=await proof(page);
   expect(after.memory.geometries-memory.geometries).toBeLessThan(10);

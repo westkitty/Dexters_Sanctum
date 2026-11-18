@@ -5,7 +5,10 @@ import { makeDrift } from './drift';
 import { makeGarden } from './garden';
 import { makeIncidents } from './incidents';
 import { ground, group } from './model';
-import { decodePostcard, encodePostcard, islandViewBounds, postcardPrefix, starLimit } from './postcard';
+import { decodePostcard, encodePostcard, islandViewBounds, postcardPrefix, starLimit, type IslandView } from './postcard';
+import { finishPostcard } from './postcard-art';
+import { connectPostcardDesk } from './postcard-desk';
+import { sealPostcard } from './postcard-png';
 import { halo, makeSky, sprite } from './sky';
 import { makeTerrain, onIsland } from './terrain';
 import { cueAt, smooth } from './timeline';
@@ -19,8 +22,7 @@ const trouble=byId<HTMLButtonElement>('trouble'), postcard=byId<HTMLButtonElemen
 const portraitButton=byId<HTMLButtonElement>('portrait');
 const guide=byId<HTMLDialogElement>('guide');
 const shareDialog=byId<HTMLDialogElement>('postcard-link');
-const address=byId<HTMLInputElement>('postcard-address');
-const copyStatus=byId('postcard-copy-status'), starTools=byId('star-tools');
+const starTools=byId('star-tools');
 const tools=['moon','stars','garden','water'] as const;
 type Tool=typeof tools[number];
 type Quality='auto'|'high'|'low';
@@ -123,6 +125,7 @@ function boot(){
   let active:Tool|null=null, charge=0, moonArc=0, moonTarget=0, selectedQuality=getQuality();
   let yaw=0,yawTarget=0, pitch=0,pitchTarget=0, noticeUntil=-1;
   let time=0,previous=0,accumulator=0,animation=0,mobile=false,portrait=false,portraitBlend=0,lost=false, ready=false;
+  let incidentClock=0, incidentNotice='';
   let userInteracted=false;
   let introAmount=media.matches?0:1;
   let slowFrames=0, adaptiveScale=1;
@@ -216,25 +219,22 @@ function boot(){
     renderConstellation();
     announce('Last star removed.');
   }
-  function showPostcardLink(){
-    const fragment=encodePostcard({
+  function islandView():IslandView{
+    return {
       moon:moonArc,
       yaw:T.MathUtils.clamp(yaw,...islandViewBounds.yaw),
       pitch,
       stars:stars.map(star=>[star.x,star.y,star.z]),
-    });
-    if(!fragment){announce('This view couldn’t be put in a link.');return;}
-    const link=new URL(window.location.href);
-    link.hash=fragment;
-    address.value=link.href;
-    copyStatus.textContent='';
-    shareDialog.showModal();
+    };
   }
   function restorePostcard(){
     if(!location.hash.startsWith(postcardPrefix))return;
     const saved=decodePostcard(location.hash);
-    if(!saved){announce('This postcard link couldn’t be opened.');return;}
+    if(!saved){announce('This postcard link couldn’t be opened.',Infinity);return;}
     if(shareDialog.open)shareDialog.close();
+    applyPostcardView(saved,'A living postcard from the Lantern Isle.');
+  }
+  function applyPostcardView(saved:IslandView,message:string){
     if(active)setTool(active);
     setPortrait(false);
     drag=null;
@@ -246,7 +246,7 @@ function boot(){
     pitch=pitchTarget=saved.pitch;
     stars.splice(0,stars.length,...saved.stars.map(([x,y,z])=>new T.Vector3(x,y,z)));
     renderConstellation();
-    announce('A living postcard from the Lantern Isle.');
+    announce(message);
   }
   function wake(point:T.Vector3){
     garden.awaken(point,time);
@@ -277,64 +277,70 @@ function boot(){
     if(active==='garden'&&ray.ray.intersectPlane(groundPlane,hit)&&onIsland(hit.x,hit.z))wake(hit);
   }
   function makeTrouble(){
-    const event=incidents.trigger(time);
+    const event=incidents.trigger(incidentClock);
     if(!event)return;
     userInteracted=true;
     trouble.disabled=true;
     setPortrait(false);
     dexter.react(event.kind,time);
     audio.chime(event.kind);
-    announce(event.notice,event.duration-.4);
+    incidentNotice=event.notice;
+    announce(incidentNotice,Infinity);
   }
   function updatePondReflection(force=false){
     const high=selectedQuality==='high';
     const enabled=high||(selectedQuality==='auto'&&!mobile&&adaptiveScale===1);
     water.prepareReflection(renderer,scene,camera,time,enabled,high,force);
   }
-  function capture(){
-    const size=renderer.getSize(new T.Vector2());
-    const originalRatio=renderer.getPixelRatio();
-    const exportRatio=Math.max(originalRatio,Math.min(2.6,1800/size.x,2200/size.y));
-    renderer.setPixelRatio(exportRatio);
-    updatePondReflection(true);
-    renderer.render(scene,camera);
-    const result=document.createElement('canvas');
-    result.width=canvas.width;
-    result.height=canvas.height;
-    const context=result.getContext('2d')!;
-    context.drawImage(canvas,0,0);
-    renderer.setPixelRatio(originalRatio);
-    renderer.render(scene,camera);
-    const unit=Math.max(12,result.width*.018);
-    const vignette=context.createLinearGradient(0,result.height*.74,0,result.height);
-    vignette.addColorStop(0,'#0c162000');
-    vignette.addColorStop(1,'#0c1620d1');
-    context.fillStyle=vignette;
-    context.fillRect(0,result.height*.74,result.width,result.height*.26);
-    const margin=unit*1.31;
-    context.strokeStyle='#dfbe8170';
-    context.lineWidth=Math.max(1,unit*.028);
-    context.beginPath();
-    context.moveTo(margin,result.height-unit*2.12);
-    context.lineTo(margin+unit*4.25,result.height-unit*2.12);
-    context.stroke();
-    context.fillStyle='#f5d4a0';
-    context.font=`italic ${unit}px Georgia`;
-    context.fillText('Dexter’s Sanctum',unit*1.4,result.height-unit*1.1);
-    result.toBlob(blob=>{
-      if(!blob){announce('The postcard couldn’t be saved.');return;}
-      const url=URL.createObjectURL(blob), link=document.createElement('a');
+  let savingPostcard=false;
+  async function capture(){
+    if(savingPostcard||lost)return;
+    savingPostcard=true;
+    postcard.disabled=true;
+    announce('Preparing your postcard…');
+    const fragment=encodePostcard(islandView());
+    try{
+      const size=renderer.getSize(new T.Vector2());
+      const originalRatio=renderer.getPixelRatio();
+      const exportRatio=Math.min(2.6,1800/size.x,2200/size.y);
+      const result=document.createElement('canvas');
+      let context:CanvasRenderingContext2D;
+      try{
+        renderer.setPixelRatio(exportRatio);
+        updatePondReflection(true);
+        renderer.render(scene,camera);
+        result.width=canvas.width;
+        result.height=canvas.height;
+        const drawing=result.getContext('2d');
+        if(!drawing)throw new Error('Canvas export unavailable');
+        context=drawing;
+        context.drawImage(canvas,0,0);
+      }finally{
+        renderer.setPixelRatio(originalRatio);
+        if(!lost)renderer.render(scene,camera);
+      }
+      finishPostcard(context,result.width,result.height);
+      const image=await new Promise<Blob|null>(resolve=>result.toBlob(resolve,'image/png'));
+      if(!image)throw new Error('PNG encoding failed');
+      const sealed=fragment?await sealPostcard(image,fragment).catch(()=>null):null;
+      const url=URL.createObjectURL(sealed??image), link=document.createElement('a');
       link.href=url;
       link.download='dexters-sanctum-postcard.png';
       link.click();
       window.setTimeout(()=>URL.revokeObjectURL(url),10000);
-      announce('A postcard from the Lantern Isle.');
-    },'image/png');
+      announce(sealed?'Postcard saved. Reopen it from Link.':'Postcard image saved.');
+    }catch{
+      announce('The postcard couldn’t be saved.');
+    }finally{
+      savingPostcard=false;
+      postcard.disabled=lost;
+    }
   }
 
   let drag:{id:number;x:number;y:number;lastX:number;lastY:number;type:'moon'|'stars'|'orbit'|'tap';moved:boolean}|null=null;
   canvas.addEventListener('pointerdown',event=>{
     if(drag||event.button!==0)return;
+    if(noticeUntil===Infinity)notice.textContent='';
     point(event.clientX,event.clientY);
     const moonHit=ray.intersectObject(sky.globe).length>0;
     const type=active==='moon'||moonHit?'moon':active==='stars'?'stars':active?'tap':'orbit';
@@ -415,26 +421,17 @@ function boot(){
     }else if(key==='?')guide.showModal();
     else if(key==='d')setPortrait(!portrait);
     else if(key==='escape'&&active)setTool(active);
-    else if(key==='escape')setPortrait(false);
+    else if(key==='escape'){
+      setPortrait(false);
+      if(noticeUntil===Infinity)notice.textContent='';
+    }
   });
   tools.forEach(id=>byId(id).addEventListener('click',()=>setTool(id)));
   trouble.addEventListener('click',makeTrouble);
   postcard.addEventListener('click',capture);
-  byId('share').addEventListener('click',showPostcardLink);
+  const desk=connectPostcardDesk(shareDialog,islandView,applyPostcardView);
+  byId('share').addEventListener('click',desk.show);
   byId('remove-star').addEventListener('click',removeStar);
-  byId('copy-postcard').addEventListener('click',async()=>{
-    const link=address.value;
-    try{
-      await navigator.clipboard.writeText(link);
-      if(shareDialog.open&&address.value===link)copyStatus.textContent='Link copied.';
-    }catch{
-      if(!shareDialog.open||address.value!==link)return;
-      address.focus();
-      address.select();
-      copyStatus.textContent='Link selected. Copy it with your device’s copy command.';
-    }
-  });
-  address.addEventListener('focus',()=>address.select());
   window.addEventListener('hashchange',restorePostcard);
   portraitButton.addEventListener('click',()=>setPortrait(!portrait,true));
   quality.value=selectedQuality;
@@ -479,7 +476,7 @@ function boot(){
     camera.lookAt(look);
     camera.updateMatrixWorld();
     if(cursor.visible)positionAtSky(cursorAt,cursor.position);
-    lastFrame=incidents.update(time,motion,sky.moon.position,camera);
+    lastFrame=incidents.update(incidentClock,motion,sky.moon.position,camera);
     sky.update(camera,time,moonArc,motion,lastFrame.sneeze,mobile);
     key.position.copy(sky.moon.position);
     key.color.copy(moonLight.copy(colorWarm).lerp(colorCool,(moonArc+1)*.32));
@@ -500,6 +497,10 @@ function boot(){
     if(time>78&&Math.floor(time/83)!==Math.floor((time-dt)/83)&&!lastFrame.active&&time>=noticeUntil)announce('Nothing suspicious. Probably.',3.2);
     charge*=Math.exp(-dt*.35);
     trouble.disabled=lastFrame.active;
+    if(!lastFrame.active&&incidentNotice){
+      if(notice.textContent===incidentNotice)notice.textContent='';
+      incidentNotice='';
+    }
     if(time>=noticeUntil&&notice.textContent)notice.textContent='';
     const hint=userInteracted?'':cueAt(time);
     if(cue.textContent!==hint)cue.textContent=hint;
@@ -508,6 +509,8 @@ function boot(){
     const elapsed=previous===0?1/60:(now-previous)/1000;
     previous=now;
     time+=elapsed;
+    // Keep an incident's visible phases even when a frame arrives late.
+    incidentClock+=Math.min(.25,elapsed);
     if(selectedQuality==='auto'&&time>2&&adaptiveScale===1){
       slowFrames=elapsed>.042?slowFrames+1:Math.max(0,slowFrames-2);
       if(slowFrames>=48){
@@ -543,7 +546,7 @@ function boot(){
   };
   window.addEventListener('resize',resize);
   document.addEventListener('visibilitychange',visibility);
-  canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();stop();lost=true;setFallback(true);});
+  canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();stop();lost=true;if(shareDialog.open)shareDialog.close();setFallback(true);});
   canvas.addEventListener('webglcontextrestored',()=>{lost=false;setFallback(false);resize();start();});
   window.addEventListener('pagehide',event=>{
     stop();

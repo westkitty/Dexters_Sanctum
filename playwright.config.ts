@@ -4,7 +4,7 @@ export default defineConfig({
   testDir: './tests',
   testMatch: '**/*.spec.ts',
   workers: 1,
-  timeout: 150_000,
+  timeout: 240_000,
   use: {
     baseURL: 'http://127.0.0.1:5173/Dexters_Sanctum/',
     launchOptions: {

@@ -28,6 +28,8 @@ See the detailed spec for all interaction and acceptance criteria.
 
 ## Local development and browser checks
 
-Use Node 22.12 or later. Run `npm ci`, then `npm run dev` and open the repository subpath shown by Vite. `npm test` checks incident timing and `npm run build` type-checks and builds the version served by Pages. For browser checks, run `npx playwright install chromium` and then `npm run test:browser`. Set `CHROMIUM_PATH` to use a system Chromium instead.
+Use Node 22.18 or later for local development and tests. Run `npm ci`, then `npm run dev` and open the repository subpath shown by Vite. `npm test` checks incident timing and the postcard formats. `npm run build` type-checks and builds the version served by Pages. For browser checks, run `npx playwright install chromium` and then `npm run test:browser`. Set `CHROMIUM_PATH` to use a system Chromium instead.
 
-Drag the moon directly or choose a tool in the bottom bar. Press D for a Dexter portrait and drag to change the angle. Sound starts off each time. The postcard button exports the current camera view as a PNG.
+Drag the moon directly or choose a tool in the bottom bar. Press D for a Dexter portrait and drag to change the angle. Sound starts off each time. **Postcard** downloads the current camera view as a PNG. **Link** copies the living view or lets you preview and reopen an original Sanctum PNG. Opening a postcard restores the moon, island orbit, and drawn stars. **Return to previous view** brings back the island view from before the last PNG was opened. Both formats work without an account or upload. Image services that remove PNG metadata can leave the picture intact while removing its saved view.
+
+The Pages workflow runs unit tests, the production build, and the Chromium regression suite before deploying.

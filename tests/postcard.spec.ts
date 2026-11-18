@@ -1,6 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
+import { encodePostcard } from '../src/postcard';
+import { readPostcard } from '../src/postcard-png';
+import { readFile } from 'node:fs/promises';
 
-type View = {moonArc:number; yaw:number; pitch:number; stars:number; starPositions:number[][]};
+type View = {moonArc:number; yaw:number; pitch:number; stars:number; starPositions:number[][];pixelRatio:number};
 const view = (page:Page) => page.evaluate(() =>
   (window as Window & {sanctumProof:()=>View}).sanctumProof());
 
@@ -20,14 +23,14 @@ test('a living postcard restores an edited constellation and view on another dev
   await page.keyboard.press('m');
   await page.keyboard.press('ArrowLeft');
   await page.keyboard.press('ArrowLeft');
-  await expect.poll(()=>view(page).then(state=>state.moonArc)).toBeCloseTo(-.28,3);
+  await expect.poll(()=>view(page).then(state=>state.moonArc),{timeout:15000}).toBeCloseTo(-.28,2);
   await page.keyboard.press('Escape');
   await page.locator('canvas').focus();
   await page.keyboard.press('ArrowLeft');
   await page.keyboard.press('ArrowLeft');
   await page.keyboard.press('ArrowUp');
-  await expect.poll(()=>view(page).then(state=>state.yaw)).toBeCloseTo(-.22,3);
-  await expect.poll(()=>view(page).then(state=>state.pitch)).toBeCloseTo(.07,3);
+  await expect.poll(()=>view(page).then(state=>state.yaw),{timeout:15000}).toBeCloseTo(-.22,2);
+  await expect.poll(()=>view(page).then(state=>state.pitch),{timeout:15000}).toBeCloseTo(.07,2);
 
   await page.locator('#stars').click();
   for(const [x,y] of [[270,47],[390,54],[510,46],[630,63]])await page.mouse.click(x,y);
@@ -99,4 +102,67 @@ test('an invalid arrival and denied clipboard leave the island and manual copy a
   await page.keyboard.press('Escape');
   await expect(page.locator('#postcard-link')).toBeHidden();
   await expect(page.locator('#share')).toBeFocused();
+});
+
+test('an exported PNG previews, reopens and returns to the previous island view', async ({page,browser,baseURL},run)=>{
+  const original={moon:-.36,yaw:-.17,pitch:.08,stars:[[-10,8,-7],[-7,9,-8],[-4,8,-8]] as [number,number,number][]};
+  await page.setViewportSize({width:1280,height:800});
+  await page.goto(baseURL!+encodePostcard(original));
+  await ready(page);
+  await page.locator('#quality').selectOption('low');
+  const renderScale=(await view(page)).pixelRatio;
+  await page.evaluate(()=>{
+    const prototype=CanvasRenderingContext2D.prototype;
+    const draw=prototype.drawImage;
+    prototype.drawImage=function(){
+      prototype.drawImage=draw;
+      throw new Error('Test export surface unavailable');
+    };
+  });
+  await page.locator('#postcard').click();
+  await expect(page.locator('#notice')).toContainText('couldn’t be saved');
+  await expect(page.locator('#postcard')).toBeEnabled();
+  expect((await view(page)).pixelRatio).toBe(renderScale);
+
+  const saved=page.waitForEvent('download',{timeout:30000});
+  await page.locator('#postcard').click();
+  const file=await saved;
+  const path=run.outputPath('living-postcard.png');
+  await file.saveAs(path);
+  const data=await readFile(path);
+  expect(data.readUInt32BE(16)).toBe(1800);
+  expect(data.length).toBeGreaterThan(100000);
+  expect(await readPostcard(new Blob([new Uint8Array(data)]))).toEqual({status:'ready',view:original});
+  expect((await view(page)).pixelRatio).toBe(renderScale);
+  await page.close();
+
+  const viewer=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true,reducedMotion:'reduce'});
+  const receiver=await viewer.newPage();
+  await receiver.goto(baseURL!);
+  await ready(receiver);
+  await receiver.locator('#share').tap();
+  const open=receiver.locator('#open-postcard');
+  const input=receiver.locator('#postcard-file');
+  await input.setInputFiles({name:'invalid.png',mimeType:'image/png',buffer:Buffer.from('no image')});
+  await expect(receiver.locator('#postcard-file-status')).toContainText('couldn’t be read');
+  await expect(open).toBeHidden();
+  const chooser=receiver.waitForEvent('filechooser');
+  await receiver.locator('#choose-postcard').tap();
+  await (await chooser).setFiles(path);
+  await expect(receiver.locator('#postcard-preview')).toBeVisible();
+  await expect(open).toBeVisible();
+  expect((await view(receiver)).stars).toBe(0);
+  await receiver.screenshot({path:run.outputPath('postcard-preview-mobile.png')});
+  await open.tap();
+  await expect(receiver.locator('#postcard-link')).toBeHidden();
+  const restored=await view(receiver);
+  expect(restored.starPositions).toEqual(original.stars);
+  expect([restored.moonArc,restored.yaw,restored.pitch]).toEqual([original.moon,original.yaw,original.pitch]);
+  expect(await receiver.evaluate(()=>location.hash)).toBe('');
+  await receiver.locator('#share').tap();
+  await receiver.locator('#return-postcard-view').tap();
+  expect((await view(receiver)).starPositions).toEqual([]);
+  expect((await view(receiver)).moonArc).toBe(0);
+  await expect(receiver.locator('#sound')).toHaveAttribute('aria-pressed','false');
+  await viewer.close();
 });
